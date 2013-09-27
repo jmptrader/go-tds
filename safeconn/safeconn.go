@@ -1,5 +1,11 @@
 package safeconn
 
+/*
+	This whole file is completely unnecessary it seems, as a connection is guaranteed to only be used by one goroutine at a time.
+	Let's refactor that soon.
+	
+*/
+
 import (
 	"fmt"
 	"io"
@@ -58,7 +64,7 @@ func (c *SafeConn) sendLoop() {
 
 		v := (i * maxHeadlessPacketSize)
 		view := msg.Data[v:]
-		packet := c.makePacket(&msg.MsgType, &view, &packetCount, true)
+		packet := makePacket(&msg.MsgType, &view, &packetCount, true)
 		(c.tcpConn).Write(packet)
 
 		//collect all packets sent back.
@@ -104,6 +110,7 @@ func (c *SafeConn) SendMessage(msg *Message) chan (*Response) {
 }
 
 /*
+Not actually used, but this is what a TDS packet-header woudl look like in a Go struct.
 type packetHeader struct {
 	pktType PacketType
 	//status byte //filled outside
@@ -116,7 +123,7 @@ type packetHeader struct {
 }
 */
 
-func (c *SafeConn) makePacket(pktType *PacketType, data *[]byte, packetID *byte, lastRequest bool) []byte {
+func makePacket(pktType *PacketType, data *[]byte, packetID *byte, lastRequest bool) []byte {
 	//headerSize = 8
 	result := make([]byte, headerSize, headerSize+len(*data))
 	result[0] = byte(*pktType)

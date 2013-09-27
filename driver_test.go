@@ -3,10 +3,11 @@ package gotds
 import (
 	"testing"
 	//"net"
+	"database/sql"
 	//"database/sql/driver"
 )
 
-func TestOpen(t *testing.T) {
+func TestInternalDriverOpen(t *testing.T) {
 	var driver Driver
 	return
 	c, err := driver.Open("")
@@ -15,4 +16,19 @@ func TestOpen(t *testing.T) {
 		return
 	}
 	c.Close()
+}
+
+func TestDriverOpen(t *testing.T) {
+	db, err := sql.Open("tds", "gotest:gotest@(slu.is:49286)/gotest&verbose=false")
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	// Open doesn't (always) open a connection. This does:
+	err = db.Ping()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 }
