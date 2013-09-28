@@ -5,11 +5,11 @@ import (
 	"errors"
 	//"github.com/grovespaz/go-tds/safeconn"
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
 	"time"
-	"encoding/binary"
 )
 
 type PacketType byte
@@ -194,7 +194,7 @@ func (c *Conn) SendMessage(msgType PacketType, data []byte) (*[][]byte, error) {
 }
 
 /*
-Not actually used, but this is what a TDS packet-header woudl look like in a Go struct.
+Not actually used, but this is what a TDS packet-header would look like in a Go struct.
 type packetHeader struct {
 	pktType PacketType
 	//status byte //filled outside
@@ -233,19 +233,46 @@ func makePacket(pktType PacketType, data []byte, packetID byte, lastRequest bool
 	return result
 }
 
+type tokenLengthDefinition byte
+
+const (
+	zeroLength     tokenLengthDefinition = 0x10 //0b00010000
+	fixedLength    tokenLengthDefinition = 0x30 //0b00110000
+	variableLength tokenLengthDefinition = 0x20 //0b00100000
+	variableCount  tokenLengthDefinition = 0x00 //0b00000000
+)
+
 type tokenDefinition byte
 
 const (
-	zeroLength     tokenDefinition = 0x10 //0b00010000
-	fixedLength    tokenDefinition = 0x30 //0b00110000
-	variableLength tokenDefinition = 0x20 //0b00100000
-	variableCount  tokenDefinition = 0x00 //0b00000000
+	altMetaData   tokenDefinition = 0x88
+	altRow        tokenDefinition = 0xD3
+	colInfo       tokenDefinition = 0xA5
+	colMetaData   tokenDefinition = 0x81
+	done          tokenDefinition = 0xFD
+	doneInProc    tokenDefinition = 0xFF
+	doneProc      tokenDefinition = 0xFE
+	envChange     tokenDefinition = 0xE3
+	errorToken    tokenDefinition = 0xAA // of course 'error' is a reserved string :)
+	featureExtAck tokenDefinition = 0xAE
+	info          tokenDefinition = 0xAB
+	loginAck      tokenDefinition = 0xAD
+	nbcRow        tokenDefinition = 0xD2
+	offset        tokenDefinition = 0x78 //Removed in TDS 7.2
+	order         tokenDefinition = 0xA9
+	returnStatus  tokenDefinition = 0x79
+	returnValue   tokenDefinition = 0xAC
+	row           tokenDefinition = 0xD1
+	sessionState  tokenDefinition = 0xE4
+	sspi          tokenDefinition = 0xED
+	tabName       tokenDefinition = 0xA4
+	tvpRow        tokenDefinition = 0x01
 )
 
 type token struct {
-	definition	tokenDefinition
-	length		int
-	data		[]byte
+	definition tokenDefinition
+	length     int
+	data       []byte
 }
 
 func parseTokenStream(data []byte) ([]token, error) {
@@ -255,13 +282,14 @@ func parseTokenStream(data []byte) ([]token, error) {
 	nextToken, err := buf.ReadByte()
 	for err == nil {
 		errLog.Printf("Parsing token: %v\n", nextToken)
-		newToken := token{}
-		switch tokenDefinition(nextToken & 0x30) { //0x30 = 0b00110000
+		newToken := token{definition: tokenDefinition(nextToken)}
+		switch tokenLengthDefinition(nextToken & 0x30) { //0x30 = 0b00110000, these two bits decide how to parse the token
 		case zeroLength:
-			newToken.definition = zeroLength
+			//newToken.definition = zeroLength
 			break
 		case fixedLength:
-			newToken.definition = fixedLength
+			errLog.Println("Fixedlength")
+			//newToken.definition = fixedLength
 			byteCount := 1
 			switch nextToken & 0xc { //0xc = 0b1100
 			case 0x4:
@@ -276,20 +304,23 @@ func parseTokenStream(data []byte) ([]token, error) {
 			newToken.length = byteCount
 			break
 		case variableLength:
-			newToken.definition = variableLength
+			errLog.Println("variableLength")
+			//newToken.definition = variableLength
 			var length uint16
 			err := binary.Read(buf, binary.LittleEndian, &length)
 			if err != nil {
 				errLog.Println("binary.Read failed:", err)
 				return nil, err
 			}
-		break;
+			newToken.length = int(length)
+			newToken.data = buf.Next(newToken.length)
+			break
 		case variableCount:
-			newToken.definition = variableCount
+			//newToken.definition = variableCount
 			panic("I haven't coded this part yet!")
-		break;
+			break
 		default:
-			err = errors.New(fmt.Sprintf("Unknown Token Definition: %v", tokenDefinition(nextToken&0x30)))
+			err = errors.New(fmt.Sprintf("Unknown Token-length Definition: %v", tokenLengthDefinition(nextToken&0x30)))
 			errLog.Println(err)
 			return nil, err
 			break
@@ -309,34 +340,37 @@ func makeTokenStream(tokens []token) ([]byte, error) {
 	//PerformanceTodo: Check if determining the length first to make one proper allocation instead of growing a few times actually helps.
 	//					Also compare performance to just allocating a sufficiently large buffer.
 	var dataLength int
-	for _, tkn := range(tokens) {
+	for _, tkn := range tokens {
 		dataLength++
 		tkn.length = len(tkn.data)
 		dataLength += tkn.length
-		
-		if tkn.definition == fixedLength {
+
+		tknLengthDef := tokenLengthDefinition(tkn.definition)
+
+		if tknLengthDef == fixedLength {
 			validLength := (tkn.length == 1) || (tkn.length == 2) || (tkn.length == 4) || (tkn.length == 8)
 			if !validLength {
 				return nil, errors.New("Invalid length for fixedLength token")
 			}
 		}
-		
-		if tkn.definition == variableLength {
+
+		if tknLengthDef == variableLength {
 			dataLength += 2
 		}
-		
-		
-		if tkn.definition == variableCount {
+
+		if tknLengthDef == variableCount {
 			panic("I haven't coded this part yet!")
 		}
 	}
-	
+
 	result := make([]byte, 0, dataLength)
 	buf := bytes.NewBuffer(result)
-	for _, tkn := range(tokens) {
-		if tkn.definition == fixedLength {
+	for _, tkn := range tokens {
+		tknLengthDef := tokenLengthDefinition(tkn.definition)
+
+		if tknLengthDef == fixedLength {
 			var length byte
-			
+
 			switch len(tkn.data) {
 			case 2:
 				length = 0x4
@@ -345,24 +379,23 @@ func makeTokenStream(tokens []token) ([]byte, error) {
 			case 8:
 				length = 0xc
 			}
-			
-			_ = buf.WriteByte(byte(tkn.definition) & length) // Error is ALWAYS nil.
+
+			buf.WriteByte(byte(tkn.definition) | length)
 		} else {
-			_ = buf.WriteByte(byte(tkn.definition)) // Error is ALWAYS nil.
+			buf.WriteByte(byte(tkn.definition))
 		}
-		
-		if tkn.definition == variableLength {
+
+		if tknLengthDef == variableLength {
 			length := uint16(len(tkn.data))
 			binary.Write(buf, binary.LittleEndian, length)
 		}
-		
-		if tkn.definition == variableCount {
+
+		if tknLengthDef == variableCount {
 			panic("I haven't coded this part yet!")
 		}
-		
+
 		buf.Write(tkn.data)
 	}
-	
-	
-	return result, nil
+
+	return buf.Bytes(), nil
 }
