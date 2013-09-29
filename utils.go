@@ -37,13 +37,13 @@ func parseDSN(dsn string) (cfg *config, err error) {
 
 	matches := dsnPattern.FindStringSubmatch(dsn)
 	names := dsnPattern.SubexpNames()
-
+	//Should validate all parameters for max length (always 128 unicode characters except for AttachDBFile)
 	for i, match := range matches {
 		switch names[i] {
 		case "user":
 			cfg.user = match
 		case "passwd":
-			cfg.passwd = match
+			cfg.password = match
 		case "net":
 			cfg.net = match
 		case "addr":
@@ -101,5 +101,33 @@ func readBool(input string) (value bool, valid bool) {
 	}
 
 	// Not a valid bool value
+	return
+}
+
+func makeByteFromBits(b1 bool, b2 bool, b3 bool, b4 bool, b5 bool, b6 bool, b7 bool, b8 bool) (result byte) {
+	if b1 {
+		result = 1
+	}
+	if b2 {
+		result |= 2
+	}
+	if b3 {
+		result |= 4
+	}
+	if b4 {
+		result |= 8
+	}
+	if b5 {
+		result |= 16
+	}
+	if b6 {
+		result |= 32
+	}
+	if b7 {
+		result |= 64
+	}
+	if b8 {
+		result |= 128
+	}
 	return
 }

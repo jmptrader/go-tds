@@ -17,7 +17,16 @@ type PacketType byte
 type ConnectionState int
 
 const (
-	headerSize = 8
+	driverName           = "go-tds"
+	driverVersion uint32 = 0x000001
+	headerSize           = 8
+)
+
+const (
+	TDS71 = 0x71
+	TDS72 = 0x72
+	TDS73 = 0x73
+	TDS74 = 0x74
 )
 
 const (
@@ -61,23 +70,82 @@ type Conn struct {
 	SubState SubState
 
 	socket        io.ReadWriteCloser
-	maxPacketSize int
+	maxPacketSize uint32
 	packetCount   byte
+	tdsVersion    uint32
+	clientPID     uint32
+	connectionID  uint32
+
+	// 0 = X86, 1 = 68000
+	byteOrder bool
+	// 0 = ASCII, 1 = EBDDIC. This probably doesn't need to be configurable
+	charType bool
+
+	// 0 = IEEE_754, 1 = VAX, 2 = ND5000
+	// Hardcoded for now
+	//floatType bool
+
+	// Do we need dump/load or BCP capabilities? 0 = ON, 1 = OFF for some reason
+	dumpLoad bool
+	// Do we want to be notified of changes in the database because of USE blahblahg statements.
+	// Probably doesn't need to be configurable
+	// 0 = No
+	// 1 = Yes
+	useDBWarnings bool
+
+	// Do we want a warning if the language changes?
+	setLang bool
+
+	/*
+		To the server, this determinse if the client is the ODBC driver.
+		If true, it will set ANSI_DEFAULTS to ON, IMPLICIT_TRANSACTIONS to OFF, TEXTSIZE to 0x7FFFFFFF
+		(2GB) (TDS 7.2 and earlier), TEXTSIZE to infinite (introduced in TDS 7.3), and
+		ROWCOUNT to infinite.
+	*/
+	odbc bool
+
+	useOLEDB bool //Since TDS 7.2
 
 	cfg config
 }
 
 type config struct {
 	user       string
-	passwd     string
+	password   string
 	net        string
 	addr       string
 	dbname     string
 	params     map[string]string
 	timeout    time.Duration
 	verboseLog bool
+	appname    string //Optional: name of the application.
+	attachDB   string //Optional: filename of database to attach upon connecting.
+
+	// If set to true, we can't connect if we can't change to the initial DB specified.
+	failIfNoDB bool
+	// Same as above, but with language
+	failIfNoLanguage bool
+	readOnly         bool //Since TDS 7.4, ignored under that
+
+	changePass bool //Since TDS 7.2
+	newPass    string
+
+	userInstance bool //Since TDS 7.2
+
+	preferredLanguage string //?Really?
+
+	integratedSecurity bool
+
+	// Type of SQL we are going to send to the server.
+	// 0 = DFLT, 1 = T-SQL
+	// I assume everyone will use T-SQL but what the hey...
+	sqlType bool //Documented to be 4 bits but only 1 bit is used at the moment
+
+	timezone int32  // TODO: Figure out format, best guess: minutes difference between UTC and local time. UTC = local time + timezone
+	lcid     uint32 //Microsoft Locale Identifier. 1033 (0x0409) == US English
 }
 
+// MakeConnection initiates a TCP connection with the specified configuration.
 func MakeConnection(cfg *config) (*Conn, error) {
 	tcpConn, err := net.DialTimeout(cfg.net, cfg.addr, cfg.timeout)
 	if err != nil {
@@ -88,7 +156,7 @@ func MakeConnection(cfg *config) (*Conn, error) {
 }
 
 func MakeConnectionWithSocket(cfg *config, socket io.ReadWriteCloser) (*Conn, error) {
-	conn := &Conn{socket: socket, State: Initial, maxPacketSize: 1024, cfg: *cfg}
+	conn := &Conn{socket: socket, State: Initial, maxPacketSize: 1024, cfg: *cfg, tdsVersion: TDS71}
 
 	conn.State = PreLogin
 	conn.SubState = RequestSent
@@ -137,7 +205,7 @@ func (c *Conn) Close() error {
 }
 
 func (c *Conn) SendMessage(msgType PacketType, data []byte) (*[][]byte, error) {
-	maxHeadlessPacketSize := c.maxPacketSize - headerSize
+	maxHeadlessPacketSize := int(c.maxPacketSize - headerSize)
 
 	//Split message into packets, send them all,
 	i := 0
@@ -307,7 +375,7 @@ func parseTokenStream(data []byte) ([]token, error) {
 			errLog.Println("variableLength")
 			//newToken.definition = variableLength
 			var length uint16
-			err := binary.Read(buf, binary.LittleEndian, &length)
+			err := binary.Read(buf, binary.BigEndian, &length)
 			if err != nil {
 				errLog.Println("binary.Read failed:", err)
 				return nil, err
@@ -387,7 +455,7 @@ func makeTokenStream(tokens []token) ([]byte, error) {
 
 		if tknLengthDef == variableLength {
 			length := uint16(len(tkn.data))
-			binary.Write(buf, binary.LittleEndian, length)
+			binary.Write(buf, binary.BigEndian, length) //PerformanceTodo: Check the cost of this versus manual mod-ing / shifting
 		}
 
 		if tknLengthDef == variableCount {
