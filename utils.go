@@ -34,6 +34,7 @@ func init() {
 func parseDSN(dsn string) (cfg *config, err error) {
 	cfg = new(config)
 	cfg.params = make(map[string]string)
+	cfg.verboseLog = true
 
 	matches := dsnPattern.FindStringSubmatch(dsn)
 	names := dsnPattern.SubexpNames()
@@ -65,7 +66,7 @@ func parseDSN(dsn string) (cfg *config, err error) {
 					if err != nil {
 						return
 					}
-				case "tls":
+				case "verbose":
 					boolValue, isBool := readBool(value)
 					if isBool {
 						cfg.verboseLog = boolValue

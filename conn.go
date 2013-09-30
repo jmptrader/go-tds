@@ -137,9 +137,9 @@ type config struct {
 	integratedSecurity bool
 
 	// Type of SQL we are going to send to the server.
-	// 0 = DFLT, 1 = T-SQL
+	// 0 = DFLT (I assume default?), 1 = T-SQL
 	// I assume everyone will use T-SQL but what the hey...
-	sqlType bool //Documented to be 4 bits but only 1 bit is used at the moment
+	sqlType bool //Documented to be 4 bits but only 1 bit is used at the moment to distinguish between default (T-SQL) and explicit T-SQL... Go figure!
 
 	timezone int32  // TODO: Figure out format, best guess: minutes difference between UTC and local time. UTC = local time + timezone
 	lcid     uint32 //Microsoft Locale Identifier. 1033 (0x0409) == US English
@@ -184,7 +184,14 @@ func MakeConnectionWithSocket(cfg *config, socket io.ReadWriteCloser) (*Conn, er
 	conn.State = Login
 	conn.SubState = RequestSent
 	//Send Login packet (eventually: negotiate encryption and stuff)
+	loginResult, err := conn.login()
+	if err != nil {
+		conn.State = Error
+		return nil, err
+	}
+
 	//Parse results:
+	_ = loginResult
 	conn.SubState = ParsingResponse
 	// (Actually parse result here)
 	if err != nil {
@@ -205,6 +212,7 @@ func (c *Conn) Close() error {
 }
 
 func (c *Conn) SendMessage(msgType PacketType, data []byte) (*[][]byte, error) {
+
 	maxHeadlessPacketSize := int(c.maxPacketSize - headerSize)
 
 	//Split message into packets, send them all,
@@ -215,12 +223,20 @@ func (c *Conn) SendMessage(msgType PacketType, data []byte) (*[][]byte, error) {
 		view := data[v : v+maxHeadlessPacketSize]
 		packet := makePacket(msgType, view, c.packetCount, false)
 		i++
+		if c.cfg.verboseLog {
+			errLog.Printf("Writing: %v", packet)
+		}
 		(c.socket).Write(packet)
 	}
 
 	v := (i * maxHeadlessPacketSize)
 	view := data[v:]
 	packet := makePacket(msgType, view, c.packetCount, true)
+
+	if c.cfg.verboseLog {
+		errLog.Printf("Writing: %v", packet)
+	}
+
 	(c.socket).Write(packet)
 
 	//collect all packets sent back.

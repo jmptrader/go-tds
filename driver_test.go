@@ -19,7 +19,7 @@ func TestInternalDriverOpen(t *testing.T) {
 }
 
 func TestDriverOpen(t *testing.T) {
-	db, err := sql.Open("tds", "gotest:gotest@(slu.is:49286)/gotest&verbose=false")
+	db, err := sql.Open("tds", "gotest:gotest@(slu.is:49286)/gotest")
 	if err != nil {
 		t.Fatal(err)
 		return

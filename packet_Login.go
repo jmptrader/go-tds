@@ -3,18 +3,56 @@ package gotds
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"os" // For hostname
 )
+
+func (c *Conn) login() ([]byte, error) {
+	loginPacket, err := c.makeLoginPacket()
+	if err != nil {
+		return nil, err
+	}
+
+	if c.cfg.verboseLog {
+		errLog.Printf("Trying to login with username: %v, password: %v and default DB: %v", c.cfg.user, c.cfg.password, c.cfg.dbname)
+		errLog.Printf("Request: %v\n", loginPacket)
+	}
+
+	loginResult, err := c.SendMessage(ptyLogin, loginPacket)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(*loginResult) == 0 {
+		return nil, errors.New("No preLogin response")
+	}
+
+	if len(*loginResult) > 1 {
+		return nil, errors.New("More than 1 result in the preLogin response")
+	}
+
+	loginResultData := (*loginResult)[0] //[8:]
+
+	if c.cfg.verboseLog {
+		errLog.Printf("Request: %v\n", loginPacket)
+		errLog.Printf("Response: %v\n", loginResultData)
+	}
+
+	return loginResultData, nil
+}
 
 func (c *Conn) makeLoginPacket() ([]byte, error) {
 	b := new(bytes.Buffer)
 	b.Grow(0) //Fill in the least needed amount here
 
-	binary.Write(b, binary.BigEndian, c.tdsVersion)
-	binary.Write(b, binary.BigEndian, c.maxPacketSize)
-	binary.Write(b, binary.BigEndian, driverVersion)
-	binary.Write(b, binary.BigEndian, c.clientPID)
-	binary.Write(b, binary.BigEndian, c.connectionID)
+	b.Write([]byte{0, 0, 0, 0}) // Length bytes, to be set later
+
+	binary.Write(b, binary.LittleEndian, c.tdsVersion)
+	binary.Write(b, binary.LittleEndian, c.maxPacketSize)
+	binary.Write(b, binary.LittleEndian, driverVersion)
+	binary.Write(b, binary.LittleEndian, c.clientPID)
+	binary.Write(b, binary.LittleEndian, c.connectionID)
 
 	optionFlags1 := makeByteFromBits(c.byteOrder,
 		c.charType,
@@ -108,13 +146,14 @@ func (c *Conn) makeLoginPacket() ([]byte, error) {
 
 	b.Write(makeVariableDataPortion(varBlock, b.Len()))
 
-	// Have to write length as first byte:
+	// Have to write length as first 4 bytes:
+	// Even though we'll never exceed 2 bytes...
 	result := b.Bytes()
 	length := len(result)
-	result[0] = byte(length / 256)
-	result[1] = byte(length % 256)
+	result[0] = byte(length % 256)
+	result[1] = byte(length / 256)
 
-	return nil, nil
+	return result, nil
 }
 
 // The second part of the LOGIN message contains all data of variable length (mostly strings)
