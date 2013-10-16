@@ -15,7 +15,7 @@ func (c *Conn) login() ([]byte, error) {
 
 	if c.cfg.verboseLog {
 		errLog.Printf("Trying to login with username: %v, password: %v and default DB: %v", c.cfg.user, c.cfg.password, c.cfg.dbname)
-		errLog.Printf("Request: %v\n", loginPacket)
+		errLog.Printf("Request: %X\n", loginPacket)
 	}
 
 	loginResult, err := c.SendMessage(ptyLogin, loginPacket)
@@ -44,11 +44,11 @@ func (c *Conn) login() ([]byte, error) {
 
 func (c *Conn) makeLoginPacket() ([]byte, error) {
 	b := new(bytes.Buffer)
-	b.Grow(0) //Fill in the least needed amount here
+	b.Grow(0) // TODO: Fill in the least needed amount here
 
 	b.Write([]byte{0, 0, 0, 0}) // Length bytes, to be set later
 
-	binary.Write(b, binary.LittleEndian, c.tdsVersion)
+	binary.Write(b, binary.BigEndian, c.tdsVersion)
 	binary.Write(b, binary.LittleEndian, c.maxPacketSize)
 	binary.Write(b, binary.LittleEndian, driverVersion)
 	binary.Write(b, binary.LittleEndian, c.clientPID)
@@ -106,8 +106,8 @@ func (c *Conn) makeLoginPacket() ([]byte, error) {
 		b.WriteByte(optionFlags3)
 	}
 
-	binary.Write(b, binary.BigEndian, c.cfg.timezone)
-	binary.Write(b, binary.BigEndian, c.cfg.lcid)
+	binary.Write(b, binary.LittleEndian, c.cfg.timezone)
+	binary.Write(b, binary.LittleEndian, c.cfg.lcid)
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -116,7 +116,7 @@ func (c *Conn) makeLoginPacket() ([]byte, error) {
 	}
 
 	var appname string
-	if c.cfg.appname == "" {
+	if c.cfg.appname != "" {
 		appname = c.cfg.appname
 	} else {
 		appname = os.Args[0] // Should be executable name, at least in *nix
@@ -124,7 +124,7 @@ func (c *Conn) makeLoginPacket() ([]byte, error) {
 
 	var servername string
 	var clientID []byte // 6-byte, apparently created using MAC (NIC) address. No idea how though, so for now:
-	clientID = []byte{0xfa, 0xca, 0xde}
+	clientID = []byte{0xfa, 0xca, 0xde, 0xfa, 0xca, 0xde}
 
 	// Variable portion:
 	varBlock := []varData{
@@ -141,7 +141,7 @@ func (c *Conn) makeLoginPacket() ([]byte, error) {
 		varData{}, // SSPI data, we'll look at this later...
 		varData{data: []byte(c.cfg.attachDB)},
 		varData{data: []byte(c.cfg.newPass)},
-		varData{data: []byte{0, 0, 0, 0}}, //SSPI long length.
+		varData{data: []byte{0, 0, 0, 0}, raw: true}, //SSPI long length.
 	}
 
 	b.Write(makeVariableDataPortion(varBlock, b.Len()))
@@ -187,8 +187,13 @@ func makeVariableDataPortion(data []varData, startingOffset int) []byte {
 			buf.Write(part.data)
 		} else {
 			dataLength := len(part.data)
-			binary.Write(buf, binary.BigEndian, offset)
-			binary.Write(buf, binary.BigEndian, dataLength)
+			//if dataLength != 0 {
+			binary.Write(buf, binary.LittleEndian, uint16(offset))
+			binary.Write(buf, binary.LittleEndian, uint16(dataLength))
+			//} else {
+			//	buf.Write([]byte{0, 0, 0, 0})
+			//}
+			//Todo: Find out if (when sending a blank entry) the offset needs to be 0 too, I believe so but the official MS example does differently.
 			offset += dataLength
 		}
 	}

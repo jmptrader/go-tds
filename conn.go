@@ -23,10 +23,17 @@ const (
 )
 
 const (
-	TDS71 = 0x71
-	TDS72 = 0x72
-	TDS73 = 0x73
-	TDS74 = 0x74
+	TDS71  = 0x01000071
+	TDS72  = 0x02000972
+	TDS73  = 0x03000B73
+	TDS73a = 0x03000a73 //Doesn't support NBCROW and Sparse Column sets
+	TDS74  = 0x04000074
+	/* Server does it differently, reversing the byte-order. That would be:
+	serverTDS71 = 0x71000001
+	serverTDS72 = 0x72090002
+	serverTDS73 = 0x730B0003
+	serverTDS74 = 0x74000004
+	*/
 )
 
 const (
@@ -156,7 +163,15 @@ func MakeConnection(cfg *config) (*Conn, error) {
 }
 
 func MakeConnectionWithSocket(cfg *config, socket io.ReadWriteCloser) (*Conn, error) {
-	conn := &Conn{socket: socket, State: Initial, maxPacketSize: 1024, cfg: *cfg, tdsVersion: TDS71}
+	conn := &Conn{socket: socket, State: Initial, maxPacketSize: 1024 * 4, cfg: *cfg, tdsVersion: TDS71}
+
+	//This seems reasonable?:
+	conn.useDBWarnings = true
+	conn.setLang = true
+
+	//Some other defaults for now:
+	conn.cfg.timezone = 0x000001e0
+	conn.cfg.lcid = 0x00000409
 
 	conn.State = PreLogin
 	conn.SubState = RequestSent
@@ -222,6 +237,7 @@ func (c *Conn) SendMessage(msgType PacketType, data []byte) (*[][]byte, error) {
 		v := (i * maxHeadlessPacketSize)
 		view := data[v : v+maxHeadlessPacketSize]
 		packet := makePacket(msgType, view, c.packetCount, false)
+		c.packetCount++
 		i++
 		if c.cfg.verboseLog {
 			errLog.Printf("Writing: %v", packet)
@@ -231,10 +247,14 @@ func (c *Conn) SendMessage(msgType PacketType, data []byte) (*[][]byte, error) {
 
 	v := (i * maxHeadlessPacketSize)
 	view := data[v:]
+
+	errLog.Printf("Packet count: %X", c.packetCount)
 	packet := makePacket(msgType, view, c.packetCount, true)
+	c.packetCount++
+	errLog.Printf("Packet count: %X", c.packetCount)
 
 	if c.cfg.verboseLog {
-		errLog.Printf("Writing: %v", packet)
+		errLog.Printf("Writing: %X", packet)
 	}
 
 	(c.socket).Write(packet)
