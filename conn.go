@@ -168,6 +168,7 @@ func MakeConnectionWithSocket(cfg *config, socket io.ReadWriteCloser) (*Conn, er
 	//This seems reasonable?:
 	conn.useDBWarnings = true
 	conn.setLang = true
+	conn.odbc = true
 
 	//Some other defaults for now:
 	conn.cfg.timezone = 0x000001e0
