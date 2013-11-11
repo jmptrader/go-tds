@@ -255,7 +255,7 @@ func (c *Conn) SendMessage(msgType PacketType, data []byte) (*[][]byte, error) {
 	errLog.Printf("Packet count: %X", c.packetCount)
 
 	if c.cfg.verboseLog {
-		errLog.Printf("Writing: %X", packet)
+		errLog.Printf("Writing: % X", packet)
 	}
 
 	(c.socket).Write(packet)
@@ -290,7 +290,7 @@ func (c *Conn) SendMessage(msgType PacketType, data []byte) (*[][]byte, error) {
 
 		if c.cfg.verboseLog {
 			errLog.Printf("Read %v bytes.\n", bytesRead)
-			errLog.Printf("Result: %v\n", resultPacket[0:bytesRead])
+			errLog.Printf("Result: % x\n", resultPacket[0:bytesRead])
 		}
 		responses = append(responses, resultPacket[8:bytesRead])
 	}

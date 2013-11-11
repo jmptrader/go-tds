@@ -15,7 +15,7 @@ func (c *Conn) login() ([]byte, error) {
 
 	if c.cfg.verboseLog {
 		errLog.Printf("Trying to login with username: %v, password: %v and default DB: %v", c.cfg.user, c.cfg.password, c.cfg.dbname)
-		errLog.Printf("Request: %X\n", loginPacket)
+		errLog.Printf("Request: % X\n", loginPacket)
 	}
 
 	loginResult, err := c.SendMessage(ptyLogin, loginPacket)
@@ -35,8 +35,8 @@ func (c *Conn) login() ([]byte, error) {
 	loginResultData := (*loginResult)[0] //[8:]
 
 	if c.cfg.verboseLog {
-		errLog.Printf("Request: %v\n", loginPacket)
-		errLog.Printf("Response: %v\n", loginResultData)
+		errLog.Printf("Request: % x\n", loginPacket)
+		errLog.Printf("Response: % x\n", loginResultData)
 	}
 
 	return loginResultData, nil
