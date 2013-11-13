@@ -4,11 +4,11 @@ import (
 	"errors"
 )
 
-type PL_OPTION_TOKEN byte
+type pl_option_token byte
 
 const (
-	VERSION    PL_OPTION_TOKEN = 0x00
-	ENCRYPTION PL_OPTION_TOKEN = 0x01
+	VERSION    pl_option_token = 0x00
+	ENCRYPTION pl_option_token = 0x01
 	INSTOPT                    = 0x02
 	THREADID                   = 0x03
 	MARS                       = 0x04
@@ -16,10 +16,10 @@ const (
 	TERMINATOR                 = 0xFF
 )
 
-type B_FENCRYPTION byte
+type b_fencryption byte
 
 const (
-	ENCRYPT_OFF     B_FENCRYPTION = 0x00 //Encryption is available but off.
+	ENCRYPT_OFF     b_fencryption = 0x00 //Encryption is available but off.
 	ENCRYPT_ON                    = 0x01 //Encryption is available and on.
 	ENCRYPT_NOT_SUP               = 0x02 //Encryption is not available.
 	ENCRYPT_REQ                   = 0x03 //Encryption is required.
@@ -27,7 +27,7 @@ const (
 
 func (c *Conn) sendPreLogin() ([]byte, error) {
 	preLoginPacket := makePreLoginPacket(0, ENCRYPT_OFF, "", 0, false, [...]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
-	preLoginResult, err := c.SendMessage(ptyPreLogin, preLoginPacket)
+	preLoginResult, err := c.sendMessage(ptyPreLogin, preLoginPacket)
 
 	if err != nil {
 		return nil, err
@@ -52,13 +52,13 @@ func (c *Conn) sendPreLogin() ([]byte, error) {
 
 type preLoginOptions []preLoginOption
 type preLoginOption struct {
-	option     PL_OPTION_TOKEN
+	option     pl_option_token
 	data       []byte
 	dataLength uint16 //TODO: Find out max length (USHORT, big endian), fill in proper go datatype
 	offset     uint16 //TODO: Find out max length (USHORT, big endian), fill in proper go datatype
 }
 
-func makePreLoginPacket(version int, encryption B_FENCRYPTION, instanceName string, ThreadID int, mars bool, traceID [20]byte) []byte {
+func makePreLoginPacket(version int, encryption b_fencryption, instanceName string, ThreadID int, mars bool, traceID [20]byte) []byte {
 	// Memory allocation might be better controlled with a pool
 	packetData := make([]byte, 0, 100)
 	preLoginData := make([]byte, 0, 100)
@@ -70,7 +70,7 @@ func makePreLoginPacket(version int, encryption B_FENCRYPTION, instanceName stri
 		//preLoginOption{option: TERMINATOR, data: []byte()},
 	}
 
-	startingOffset := (len(options) * (1 + 2 + 2)) + 1 // 1 for PL_OPTION_TOKEN, 2 twice for PL_OFFSET and PL_OPTION_LENGTH. +1 for terminator
+	startingOffset := (len(options) * (1 + 2 + 2)) + 1 // 1 for pl_option_token, 2 twice for PL_OFFSET and PL_OPTION_LENGTH. +1 for terminator
 
 	for _, plo := range options {
 		length := len(plo.data)

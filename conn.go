@@ -12,9 +12,7 @@ import (
 	"time"
 )
 
-type PacketType byte
-
-type ConnectionState int
+type packetType byte
 
 const (
 	driverName           = "go-tds"
@@ -36,6 +34,7 @@ const (
 	*/
 )
 
+type ConnectionState int
 const (
 	Initial ConnectionState = iota
 	PreLogin
@@ -55,19 +54,19 @@ const (
 )
 
 const (
-	ptySQLBatch    PacketType = 1
-	ptyLegacyLogin PacketType = 2
-	ptyRPC         PacketType = 3
-	ptyTableResult PacketType = 4
-	// Packettype 5 is unused
-	ptyAttention PacketType = 6
-	ptyBulkLoad  PacketType = 7
-	// Packettypes 8-13 are unused
-	ptyTransactionManagerRequest PacketType = 14
-	// Packettype 15 is unused
-	ptyLogin       PacketType = 16
-	ptySSPIMessage PacketType = 17
-	ptyPreLogin    PacketType = 18
+	ptySQLBatch    packetType = 1
+	ptyLegacyLogin packetType = 2
+	ptyRPC         packetType = 3
+	ptyTableResult packetType = 4
+	// packetType 5 is unused
+	ptyAttention packetType = 6
+	ptyBulkLoad  packetType = 7
+	// packetTypes 8-13 are unused
+	ptyTransactionManagerRequest packetType = 14
+	// packetType 15 is unused
+	ptyLogin       packetType = 16
+	ptySSPIMessage packetType = 17
+	ptyPreLogin    packetType = 18
 )
 
 type Conn struct {
@@ -162,6 +161,8 @@ func MakeConnection(cfg *config) (*Conn, error) {
 	return MakeConnectionWithSocket(cfg, tcpConn)
 }
 
+// MakeConnectionWithSocket initiates a connection using the specified ReadWriteCloser as an underlying socket.
+// This allows for the TDS connections to take place over a protocol other than TCP, which the specs allow for.
 func MakeConnectionWithSocket(cfg *config, socket io.ReadWriteCloser) (*Conn, error) {
 	conn := &Conn{socket: socket, State: Initial, maxPacketSize: 1024 * 4, cfg: *cfg, tdsVersion: TDS71}
 
@@ -222,12 +223,15 @@ func MakeConnectionWithSocket(cfg *config, socket io.ReadWriteCloser) (*Conn, er
 	return conn, nil
 }
 
+// Immediately closes the socket.
 func (c *Conn) Close() error {
 	return c.socket.Close()
 	//return nil
 }
 
-func (c *Conn) SendMessage(msgType PacketType, data []byte) (*[][]byte, error) {
+// sendMessage sends the supplied data to the server, wrapped in the proper headers and packet(s)
+// You probably shouldn't use this directly.
+func (c *Conn) sendMessage(msgType packetType, data []byte) (*[][]byte, error) {
 
 	maxHeadlessPacketSize := int(c.maxPacketSize - headerSize)
 
@@ -301,7 +305,7 @@ func (c *Conn) SendMessage(msgType PacketType, data []byte) (*[][]byte, error) {
 /*
 Not actually used, but this is what a TDS packet-header would look like in a Go struct.
 type packetHeader struct {
-	pktType PacketType
+	pktType packetType
 	//status byte //filled outside
 	//length uint16 //big endian, filled by datalength + 8
 	//spid uint16 //unused, zeroed out
@@ -312,7 +316,7 @@ type packetHeader struct {
 }
 */
 
-func makePacket(pktType PacketType, data []byte, packetID byte, lastRequest bool) []byte {
+func makePacket(pktType packetType, data []byte, packetID byte, lastRequest bool) []byte {
 	//headerSize = 8
 	result := make([]byte, headerSize, headerSize+len(data))
 	result[0] = byte(pktType)

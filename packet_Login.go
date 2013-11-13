@@ -18,7 +18,7 @@ func (c *Conn) login() ([]byte, error) {
 		errLog.Printf("Request: % X\n", loginPacket)
 	}
 
-	loginResult, err := c.SendMessage(ptyLogin, loginPacket)
+	loginResult, err := c.sendMessage(ptyLogin, loginPacket)
 
 	if err != nil {
 		return nil, err

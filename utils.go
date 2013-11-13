@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"io"
 )
 
 /*
@@ -22,7 +23,14 @@ var (
 )
 
 func init() {
-	errLog = log.New(os.Stderr, "[go-tds] ", log.Ldate|log.Ltime|log.Lshortfile)
+	logFile, err := os.Create("debug.log")
+	if err != nil {
+		panic(err)
+	}
+	
+	multiLog := io.MultiWriter(os.Stderr, logFile)
+	
+	errLog = log.New(multiLog, "[go-tds] ", log.Ldate|log.Ltime|log.Lshortfile)
 
 	dsnPattern = regexp.MustCompile(
 		`^(?:(?P<user>.*?)(?::(?P<passwd>.*))?@)?` + // [user[:password]@]
