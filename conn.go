@@ -35,6 +35,7 @@ const (
 )
 
 type ConnectionState int
+
 const (
 	Initial ConnectionState = iota
 	PreLogin

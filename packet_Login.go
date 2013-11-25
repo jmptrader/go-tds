@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"io"
 	"os" // For hostname
+	"unicode/utf16"
 )
 
 func (c *Conn) login() ([]byte, error) {
@@ -128,21 +130,39 @@ func (c *Conn) makeLoginPacket() ([]byte, error) {
 
 	// Variable portion:
 	varBlock := []varData{
-		varData{data: []byte(hostname)},
-		varData{data: []byte(ensureBrackets(c.cfg.user))},
-		varData{data: encodePassword(c.cfg.password)},
-		varData{data: []byte(appname)},
-		varData{data: []byte(servername)},
+		varData{strData: hostname},
+		varData{strData: ensureBrackets(c.cfg.user)},
+		varData{data: encodePassword(c.cfg.password)}, //strData or data?
+		varData{strData: appname},
+		varData{strData: servername},
 		varData{}, // Extension block which we do not use at the moment
-		varData{data: []byte(driverName)},
+		varData{strData: driverName},
 		varData{data: []byte(c.cfg.preferredLanguage)},
-		varData{data: []byte(ensureBrackets(c.cfg.dbname))},
+		varData{strData: ensureBrackets(c.cfg.dbname)},
 		varData{data: clientID, raw: true},
 		varData{}, // SSPI data, we'll look at this later...
-		varData{data: []byte(c.cfg.attachDB)},
-		varData{data: []byte(c.cfg.newPass)},
+		varData{strData: c.cfg.attachDB},
+		varData{data: []byte(c.cfg.newPass)},         //strData or data?
 		varData{data: []byte{0, 0, 0, 0}, raw: true}, //SSPI long length.
 	}
+	/*
+		varBlock := []varData{
+			varData{data: []byte(hostname)},
+			varData{data: []byte(ensureBrackets(c.cfg.user))},
+			varData{data: encodePassword(c.cfg.password)},
+			varData{data: []byte(appname)},
+			varData{data: []byte(servername)},
+			varData{}, // Extension block which we do not use at the moment
+			varData{data: []byte(driverName)},
+			varData{data: []byte(c.cfg.preferredLanguage)},
+			varData{data: []byte(ensureBrackets(c.cfg.dbname))},
+			varData{data: clientID, raw: true},
+			varData{}, // SSPI data, we'll look at this later...
+			varData{data: []byte(c.cfg.attachDB)},
+			varData{data: []byte(c.cfg.newPass)},
+			varData{data: []byte{0, 0, 0, 0}, raw: true}, //SSPI long length.
+		}
+	*/
 
 	b.Write(makeVariableDataPortion(varBlock, b.Len()))
 
@@ -161,15 +181,23 @@ func (c *Conn) makeLoginPacket() ([]byte, error) {
 // For some reason I can't fathom, smack in the middle of the header lies a 6(!)-byte field for the ClientID, which completely breaks any sleek generic function one would want to write for this. At the end of the header is another field in case the SSPI-length was larger than uint16. This field is a uint32 and can be used as a replacement length.
 // Because of this, I introduce this struct:
 type varData struct {
-	data []byte // The data to include
-	raw  bool   // Whether to do it properly or to just smack the raw data in the header...
+	data    []byte // The data to include OR:
+	strData string // The string to include
+	raw     bool   // Whether to do it properly or to just smack the raw data in the header...
 }
 
 //...which we loop through a couple of times here
 func makeVariableDataPortion(data []varData, startingOffset int) []byte {
 	totalLength := 0
 	for _, part := range data {
-		dataLength := len(part.data)
+		var dataLength int
+		if part.data == nil {
+			//TODO(gv): This can't be right, make it better...
+			dataLength = len(part.strData)
+		} else {
+			dataLength = len(part.data)
+		}
+
 		if part.raw {
 			startingOffset += dataLength
 			totalLength += 4 + dataLength
@@ -186,7 +214,14 @@ func makeVariableDataPortion(data []varData, startingOffset int) []byte {
 		if part.raw {
 			buf.Write(part.data)
 		} else {
-			dataLength := len(part.data)
+			var dataLength int
+			if part.data == nil {
+				//TODO(gv): This can't be right, make it better...
+				dataLength = len(part.strData)
+			} else {
+				dataLength = len(part.data)
+			}
+
 			//if dataLength != 0 {
 			binary.Write(buf, binary.LittleEndian, uint16(offset))
 			binary.Write(buf, binary.LittleEndian, uint16(dataLength))
@@ -200,11 +235,20 @@ func makeVariableDataPortion(data []varData, startingOffset int) []byte {
 
 	for _, part := range data {
 		if !part.raw {
-			buf.Write(part.data)
+			if part.data == nil {
+				WriteUTF16String(buf, part.strData)
+			} else {
+				buf.Write(part.data)
+			}
 		}
 	}
 
 	return buf.Bytes()
+}
+
+func WriteUTF16String(w io.Writer, s string) error {
+	bla := utf16.Encode([]rune(s))
+	return binary.Write(w, binary.LittleEndian, bla)
 }
 
 func encodePassword(password string) []byte {

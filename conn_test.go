@@ -2,9 +2,12 @@ package gotds
 
 import (
 	"bytes"
+	_"encoding/binary"
 	"github.com/grovespaz/go-tds/mockserver"
 	"reflect"
 	"testing"
+	
+	"unicode/utf16"
 )
 
 func TestMockPreLogin(t *testing.T) {
@@ -126,4 +129,81 @@ func TestVariableLengthTokenBuildingAndParsing(t *testing.T) {
 		t.Log(parsedTokens)
 		t.Fatal("Variable length building or parsing failed")
 	}
+}
+
+func TestVariableLengthLogin(t *testing.T) {
+	var clientID []byte // 6-byte, apparently created using MAC (NIC) address. No idea how though, so for now:
+	clientID = []byte{0xfa, 0xca, 0xde, 0xfa, 0xca, 0xde}
+
+	// Variable portion:
+	varBlock := []varData{
+		varData{strData: "host"},
+		varData{strData: ensureBrackets("user")},
+		varData{data: encodePassword("pass")}, //strData or data?
+		varData{strData: "app"},
+		varData{strData: "server"},
+		varData{}, // Extension block which we do not use at the moment
+		varData{strData: "driver"},
+		varData{data: []byte("lang")},
+		varData{strData: ensureBrackets("dbname")},
+		varData{data: clientID, raw: true},
+		varData{}, // SSPI data, we'll look at this later...
+		varData{strData: "AttachDB"},
+		varData{data: []byte("newPass")},             //strData or data?
+		varData{data: []byte{0, 0, 0, 0}, raw: true}, //SSPI long length.
+	}
+
+	b := makeVariableDataPortion(varBlock, 0)
+	errLog.Printf("XX: % x \n", b)
+
+	hostname := readBlockString(0, b)
+	errLog.Printf("Hostname: %s \n", hostname)
+	username := readBlockString(1*4, b)
+	errLog.Printf("username: %s \n", username)
+	password := readBlock(2*4, b)
+	errLog.Printf("password: %v \n", password)
+	appname := readBlockString(3*4, b)
+	errLog.Printf("appname: %s \n", appname)
+	servername := readBlockString(4*4, b)
+	errLog.Printf("servername: %s \n", servername)
+	_ = readBlock(5*4, b) //Unused
+	CltIntName := readBlockString(6*4, b)
+	errLog.Printf("CltIntName: %s \n", CltIntName)
+	language := readBlockString(7*4, b)
+	errLog.Printf("language: %s \n", language)
+	database := readBlockString(8*4, b)
+	errLog.Printf("database: %s \n", database)
+	//sHostname := readBlockString(0, b)
+
+}
+
+func readBlock(off int, data []byte) []byte {
+	return nil
+}
+
+func readBlockString(off int, data []byte) string {
+	// VERY inefficient, just for testing
+	//buf := make([]byte, 0, 20)
+	var offset uint16
+	var length uint16
+
+	offset = (uint16(data[off+ 1]) * 256) + uint16(data[off+ 0])
+	length = (uint16(data[off+ 3]) * 256) + uint16(data[off+ 2])
+
+	//x := bytes.NewReader(data[offset : offset+length])
+	x := data[offset : offset+length]
+	errLog.Printf("off: %v, Length: %v, offset %v, XX: % x \n", off, length, offset, x)
+	
+	//var y []uint16
+	y := make([]uint16, 0)
+	
+	for i := 0; i < int(length) / 2; i++ {
+		var xd uint16
+		//err = binary.Read(x, binary.LittleEndian, xd)
+		xd = (uint16(x[i+1]) * 256) + uint16(x[i])
+		y = append(y, xd)
+	}
+	
+	
+	return string(utf16.Decode(y))
 }

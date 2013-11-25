@@ -1,12 +1,12 @@
 package gotds
 
 import (
+	"io"
 	"log"
 	"os"
 	"regexp"
 	"strings"
 	"time"
-	"io"
 )
 
 /*
@@ -27,9 +27,9 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	
+
 	multiLog := io.MultiWriter(os.Stderr, logFile)
-	
+
 	errLog = log.New(multiLog, "[go-tds] ", log.Ldate|log.Ltime|log.Lshortfile)
 
 	dsnPattern = regexp.MustCompile(
