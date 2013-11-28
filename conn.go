@@ -15,7 +15,8 @@ import (
 type packetType byte
 
 const (
-	driverName           = "go-tds"
+	//driverName           = "go-tds"
+	driverName           = "ODBC"
 	driverVersion uint32 = 0x000001
 	headerSize           = 8
 )
@@ -152,6 +153,25 @@ type config struct {
 	lcid     uint32 //Microsoft Locale Identifier. 1033 (0x0409) == US English
 }
 
+type SQLError struct {
+	//The error number (numbers less than 20001 are reserved by Microsoft SQL Server).
+	Number int
+	// The error state, used as a modifier to the error number.
+	State int
+	// Class a.k.a. severity determines the severity of the error.
+	// Values below 10 indicate informational messages
+	Class int
+	// The error message itself
+	Text string
+	// The name of the server
+	Server string
+	// The name of the procedure that caused the error
+	Procedure string
+	// The line-number at which the error occured. 1-based
+	// 0 means not applicable.
+	Line int
+}
+
 // MakeConnection initiates a TCP connection with the specified configuration.
 func MakeConnection(cfg *config) (*Conn, error) {
 	tcpConn, err := net.DialTimeout(cfg.net, cfg.addr, cfg.timeout)
@@ -265,6 +285,10 @@ func (c *Conn) sendMessage(msgType packetType, data []byte) (*[][]byte, error) {
 
 	(c.socket).Write(packet)
 
+	return c.readMessage()
+}
+
+func (c *Conn) readMessage() (*[][]byte, error) {
 	//collect all packets sent back.
 	//Send response to caller
 	EOM := false

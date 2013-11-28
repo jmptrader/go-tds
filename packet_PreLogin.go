@@ -26,7 +26,7 @@ const (
 )
 
 func (c *Conn) sendPreLogin() ([]byte, error) {
-	preLoginPacket := makePreLoginPacket(0, ENCRYPT_OFF, "", 0, false, [...]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
+	preLoginPacket := makePreLoginPacket(0, ENCRYPT_NOT_SUP, "", 0, false, [...]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
 	preLoginResult, err := c.sendMessage(ptyPreLogin, preLoginPacket)
 
 	if err != nil {

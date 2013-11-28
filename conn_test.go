@@ -2,12 +2,13 @@ package gotds
 
 import (
 	"bytes"
-	_"encoding/binary"
+	_ "encoding/binary"
 	"github.com/grovespaz/go-tds/mockserver"
 	"reflect"
 	"testing"
-	
-	"unicode/utf16"
+
+	utf16c "github.com/grovespaz/go-tds/utf16"
+	utf16 "unicode/utf16"
 )
 
 func TestMockPreLogin(t *testing.T) {
@@ -144,7 +145,7 @@ func TestVariableLengthLogin(t *testing.T) {
 		varData{strData: "server"},
 		varData{}, // Extension block which we do not use at the moment
 		varData{strData: "driver"},
-		varData{data: []byte("lang")},
+		varData{data: nil},
 		varData{strData: ensureBrackets("dbname")},
 		varData{data: clientID, raw: true},
 		varData{}, // SSPI data, we'll look at this later...
@@ -153,14 +154,25 @@ func TestVariableLengthLogin(t *testing.T) {
 		varData{data: []byte{0, 0, 0, 0}, raw: true}, //SSPI long length.
 	}
 
-	b := makeVariableDataPortion(varBlock, 0)
+	b := makeVariableDataPortion(varBlock, 36)
+
+	decodeVariableLengthBlock(b)
+}
+
+func TestVariableLengthLogin2(t *testing.T) {
+	// From MS docs
+	b := []byte{0x5E, 0x00, 0x08, 0x00, 0x6E, 0x00, 0x02, 0x00, 0x72, 0x00, 0x00, 0x00, 0x72, 0x00, 0x07, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x04, 0x00, 0x88, 0x00, 0x00, 0x00, 0x88, 0x00, 0x00, 0x00, 0x00, 0x50, 0x8B, 0xE2, 0xB7, 0x8F, 0x88, 0x00, 0x00, 0x00, 0x88, 0x00, 0x00, 0x00, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x73, 0x00, 0x6B, 0x00, 0x6F, 0x00, 0x73, 0x00, 0x74, 0x00, 0x6F, 0x00, 0x76, 0x00, 0x31, 0x00, 0x73, 0x00, 0x61, 0x00, 0x4F, 0x00, 0x53, 0x00, 0x51, 0x00, 0x4C, 0x00, 0x2D, 0x00, 0x33, 0x00, 0x32, 0x00, 0x4F, 0x00, 0x44, 0x00, 0x42, 0x00, 0x43, 0x00}
+	decodeVariableLengthBlock(b)
+}
+
+func decodeVariableLengthBlock(b []byte) {
 	errLog.Printf("XX: % x \n", b)
 
 	hostname := readBlockString(0, b)
 	errLog.Printf("Hostname: %s \n", hostname)
 	username := readBlockString(1*4, b)
 	errLog.Printf("username: %s \n", username)
-	password := readBlock(2*4, b)
+	password := decodePassword(readBlock(2*4, b))
 	errLog.Printf("password: %v \n", password)
 	appname := readBlockString(3*4, b)
 	errLog.Printf("appname: %s \n", appname)
@@ -174,11 +186,20 @@ func TestVariableLengthLogin(t *testing.T) {
 	database := readBlockString(8*4, b)
 	errLog.Printf("database: %s \n", database)
 	//sHostname := readBlockString(0, b)
-
 }
 
 func readBlock(off int, data []byte) []byte {
-	return nil
+	var offset uint16
+	var length uint16
+
+	offset = (uint16(data[off+1]) * 256) + uint16(data[off+0])
+	length = (uint16(data[off+3]) * 256) + uint16(data[off+2])
+
+	//Hackish:
+	offset -= 36
+	x := data[offset : offset+(length)]
+
+	return x
 }
 
 func readBlockString(off int, data []byte) string {
@@ -187,23 +208,47 @@ func readBlockString(off int, data []byte) string {
 	var offset uint16
 	var length uint16
 
-	offset = (uint16(data[off+ 1]) * 256) + uint16(data[off+ 0])
-	length = (uint16(data[off+ 3]) * 256) + uint16(data[off+ 2])
+	offset = (uint16(data[off+1]) * 256) + uint16(data[off+0])
+	length = (uint16(data[off+3]) * 256) + uint16(data[off+2])
 
+	//Hackish:
+	offset -= 36
+
+	//errLog.Printf("off: %v, Length: %v, offset %v\n", off, length, offset)
 	//x := bytes.NewReader(data[offset : offset+length])
-	x := data[offset : offset+length]
-	errLog.Printf("off: %v, Length: %v, offset %v, XX: % x \n", off, length, offset, x)
-	
+	x := data[offset : offset+(length*2)]
+	//errLog.Printf("off: %v, Length: %v, offset %v, XX: % x \n", off, length, offset, x)
+
 	//var y []uint16
 	y := make([]uint16, 0)
-	
-	for i := 0; i < int(length) / 2; i++ {
+
+	errLog.Printf("%v", length)
+	for i := 0; i < int(length); i++ {
 		var xd uint16
+		i2 := i * 2
 		//err = binary.Read(x, binary.LittleEndian, xd)
-		xd = (uint16(x[i+1]) * 256) + uint16(x[i])
+		xd = (uint16(x[i2+1]) >> 8) + uint16(x[i2])
+		//errLog.Printf("b: %x, c: %v", xd, string(rune(x[i2])))
 		y = append(y, xd)
 	}
-	
-	
+
 	return string(utf16.Decode(y))
+}
+
+func decodePassword(b []byte) string {
+	for i := 0; i < len(b); i++ {
+		b[i] = b[i] ^ 0xA5 //10100101
+		b[i] = (b[i] >> 4) | (b[i] << 4)
+	}
+
+	return utf16c.Decode(b)
+}
+
+func TestPasswordEncodeAndDecode(t *testing.T) {
+	original := "test123世界blaat"
+	encoded := encodePassword(original)
+	decoded := decodePassword(encoded)
+	if decoded != original {
+		t.Fatalf("Original and decoded doesn't match, %v (% x) vs. %v (% x)", original, original, decoded, decoded)
+	}
 }
