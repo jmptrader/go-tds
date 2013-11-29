@@ -24,6 +24,7 @@ func TestMockPreLogin(t *testing.T) {
 	c.Close()
 }
 
+/*
 func TestLivePreLogin(t *testing.T) {
 	return
 	config, _ := parseDSN("gotest:gotest@(slu.is:49286)/gotest")
@@ -36,6 +37,7 @@ func TestLivePreLogin(t *testing.T) {
 
 	c.Close()
 }
+*/
 
 func TestTokenParsing(t *testing.T) {
 	// Blank stream:

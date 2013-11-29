@@ -71,18 +71,26 @@ const (
 	ptyPreLogin    packetType = 18
 )
 
+type encryptionType byte
+
+const (
+	encryptOff          encryptionType = 0x00 //Encryption is available but off.
+	encryptOn                          = 0x01 //Encryption is available and on.
+	encryptNotSupported                = 0x02 //Encryption is not available.
+	encryptRequired                    = 0x03 //Encryption is required.
+)
+
 type Conn struct {
 	driver.Conn
 
 	State    ConnectionState
 	SubState SubState
 
-	socket        io.ReadWriteCloser
-	maxPacketSize uint32
-	packetCount   byte
-	tdsVersion    uint32
-	clientPID     uint32
-	connectionID  uint32
+	socket       io.ReadWriteCloser
+	packetCount  byte
+	tdsVersion   uint32
+	clientPID    uint32
+	connectionID uint32
 
 	// 0 = X86, 1 = 68000
 	byteOrder bool
@@ -118,16 +126,20 @@ type Conn struct {
 }
 
 type config struct {
-	user       string
-	password   string
-	net        string
-	addr       string
-	dbname     string
-	params     map[string]string
-	timeout    time.Duration
-	verboseLog bool
-	appname    string //Optional: name of the application.
-	attachDB   string //Optional: filename of database to attach upon connecting.
+	user          string
+	password      string
+	net           string
+	addr          string
+	dbname        string
+	params        map[string]string
+	timeout       time.Duration
+	verboseLog    bool
+	maxPacketSize uint32
+	appname       string //Optional: name of the application.
+	attachDB      string //Optional: filename of database to attach upon connecting.
+
+	encryption             encryptionType
+	trustServerCertificate bool
 
 	// If set to true, we can't connect if we can't change to the initial DB specified.
 	failIfNoDB bool
@@ -185,7 +197,7 @@ func MakeConnection(cfg *config) (*Conn, error) {
 // MakeConnectionWithSocket initiates a connection using the specified ReadWriteCloser as an underlying socket.
 // This allows for the TDS connections to take place over a protocol other than TCP, which the specs allow for.
 func MakeConnectionWithSocket(cfg *config, socket io.ReadWriteCloser) (*Conn, error) {
-	conn := &Conn{socket: socket, State: Initial, maxPacketSize: 1024 * 4, cfg: *cfg, tdsVersion: TDS71}
+	conn := &Conn{socket: socket, State: Initial, cfg: *cfg, tdsVersion: TDS71}
 
 	//This seems reasonable?:
 	conn.useDBWarnings = true
@@ -254,7 +266,7 @@ func (c *Conn) Close() error {
 // You probably shouldn't use this directly.
 func (c *Conn) sendMessage(msgType packetType, data []byte) (*[][]byte, error) {
 
-	maxHeadlessPacketSize := int(c.maxPacketSize - headerSize)
+	maxHeadlessPacketSize := int(c.cfg.maxPacketSize - headerSize)
 
 	//Split message into packets, send them all,
 	i := 0
@@ -274,10 +286,10 @@ func (c *Conn) sendMessage(msgType packetType, data []byte) (*[][]byte, error) {
 	v := (i * maxHeadlessPacketSize)
 	view := data[v:]
 
-	errLog.Printf("Packet count: %X", c.packetCount)
+	//errLog.Printf("Packet count: %X", c.packetCount)
 	packet := makePacket(msgType, view, c.packetCount, true)
 	c.packetCount++
-	errLog.Printf("Packet count: %X", c.packetCount)
+	//errLog.Printf("Packet count: %X", c.packetCount)
 
 	if c.cfg.verboseLog {
 		errLog.Printf("Writing: % X", packet)
@@ -301,7 +313,7 @@ func (c *Conn) readMessage() (*[][]byte, error) {
 			return nil, err
 		}
 
-		if resultPacket[0] != 4 {
+		if resultPacket[0] != ptyTableResult {
 			//Server always returns type 4 in packet header
 			err = errors.New("Incorrect data, was expecting 0x04.")
 			errLog.Println(err)

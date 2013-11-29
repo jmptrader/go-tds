@@ -1,3 +1,6 @@
+// go-tds is an experimental pure-go TDS-driver.
+// With it you should be able to connect to Microsoft SQL Servers (2000, 2005, 2008, 2012 and up).
+// It is not functional yet.
 package gotds
 
 import (

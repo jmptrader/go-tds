@@ -16,17 +16,8 @@ const (
 	TERMINATOR                 = 0xFF
 )
 
-type b_fencryption byte
-
-const (
-	ENCRYPT_OFF     b_fencryption = 0x00 //Encryption is available but off.
-	ENCRYPT_ON                    = 0x01 //Encryption is available and on.
-	ENCRYPT_NOT_SUP               = 0x02 //Encryption is not available.
-	ENCRYPT_REQ                   = 0x03 //Encryption is required.
-)
-
 func (c *Conn) sendPreLogin() ([]byte, error) {
-	preLoginPacket := makePreLoginPacket(0, ENCRYPT_NOT_SUP, "", 0, false, [...]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
+	preLoginPacket := makePreLoginPacket(0, encryptNotSupported, "", 0, false, [...]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
 	preLoginResult, err := c.sendMessage(ptyPreLogin, preLoginPacket)
 
 	if err != nil {
@@ -58,7 +49,7 @@ type preLoginOption struct {
 	offset     uint16 //TODO: Find out max length (USHORT, big endian), fill in proper go datatype
 }
 
-func makePreLoginPacket(version int, encryption b_fencryption, instanceName string, ThreadID int, mars bool, traceID [20]byte) []byte {
+func makePreLoginPacket(version int, encryption encryptionType, instanceName string, ThreadID int, mars bool, traceID [20]byte) []byte {
 	// Memory allocation might be better controlled with a pool
 	packetData := make([]byte, 0, 100)
 	preLoginData := make([]byte, 0, 100)
