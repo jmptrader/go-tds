@@ -12,11 +12,9 @@ import (
 	"time"
 )
 
-type packetType byte
-
 const (
-	//driverName           = "go-tds"
-	driverName           = "ODBC"
+	driverName           = "go-tds"
+	//driverName           = "ODBC"
 	driverVersion uint32 = 0x000001
 	headerSize           = 8
 )
@@ -55,6 +53,7 @@ const (
 	NotificationSent
 )
 
+type packetType byte
 const (
 	ptySQLBatch    packetType = 1
 	ptyLegacyLogin packetType = 2
@@ -165,25 +164,6 @@ type config struct {
 	lcid     uint32 //Microsoft Locale Identifier. 1033 (0x0409) == US English
 }
 
-type SQLError struct {
-	//The error number (numbers less than 20001 are reserved by Microsoft SQL Server).
-	Number int
-	// The error state, used as a modifier to the error number.
-	State int
-	// Class a.k.a. severity determines the severity of the error.
-	// Values below 10 indicate informational messages
-	Class int
-	// The error message itself
-	Text string
-	// The name of the server
-	Server string
-	// The name of the procedure that caused the error
-	Procedure string
-	// The line-number at which the error occured. 1-based
-	// 0 means not applicable.
-	Line int
-}
-
 // MakeConnection initiates a TCP connection with the specified configuration.
 func MakeConnection(cfg *config) (*Conn, error) {
 	tcpConn, err := net.DialTimeout(cfg.net, cfg.addr, cfg.timeout)
@@ -264,7 +244,7 @@ func (c *Conn) Close() error {
 
 // sendMessage sends the supplied data to the server, wrapped in the proper headers and packet(s)
 // You probably shouldn't use this directly.
-func (c *Conn) sendMessage(msgType packetType, data []byte) (*[][]byte, error) {
+func (c *Conn) sendMessage(msgType packetType, data []byte) (*[][]byte, *[]SQLError, error) {
 
 	maxHeadlessPacketSize := int(c.cfg.maxPacketSize - headerSize)
 
@@ -300,24 +280,25 @@ func (c *Conn) sendMessage(msgType packetType, data []byte) (*[][]byte, error) {
 	return c.readMessage()
 }
 
-func (c *Conn) readMessage() (*[][]byte, error) {
+func (c *Conn) readMessage() (*[][]byte, *[]SQLError, error) {
 	//collect all packets sent back.
 	//Send response to caller
 	EOM := false
 	responses := make([][]byte, 0, 5)
+	SQLErrors := make([]SQLError, 0, 5)
 	for !EOM {
 		resultPacket := make([]byte, 1024, 1024)
 		bytesRead, err := c.socket.Read(resultPacket)
 		if err != nil {
 			errLog.Println(err)
-			return nil, err
+			return nil, nil, err
 		}
 
-		if resultPacket[0] != ptyTableResult {
+		if resultPacket[0] != byte(ptyTableResult) {
 			//Server always returns type 4 in packet header
 			err = errors.New("Incorrect data, was expecting 0x04.")
 			errLog.Println(err)
-			return nil, err
+			return nil, nil, err
 		}
 		if resultPacket[1] == 1 {
 			//Byte 1 in the packet header denotes status, 1 is EOM
@@ -326,17 +307,23 @@ func (c *Conn) readMessage() (*[][]byte, error) {
 		}
 		if resultPacket[1] > 1 {
 			//This should not happen in server->client communication.
-			return nil, err
+			return nil, nil, err
 		}
 
 		if c.cfg.verboseLog {
 			errLog.Printf("Read %v bytes.\n", bytesRead)
 			errLog.Printf("Result: % x\n", resultPacket[0:bytesRead])
 		}
-		responses = append(responses, resultPacket[8:bytesRead])
+		
+		switch resultPacket[8]{
+		case 0xAA: //Error
+			
+		default:
+			responses = append(responses, resultPacket[8:bytesRead])
+		}
 	}
 
-	return &responses, nil
+	return &responses, &SQLErrors, nil
 }
 
 /*

@@ -18,7 +18,7 @@ const (
 
 func (c *Conn) sendPreLogin() ([]byte, error) {
 	preLoginPacket := makePreLoginPacket(0, encryptNotSupported, "", 0, false, [...]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
-	preLoginResult, err := c.sendMessage(ptyPreLogin, preLoginPacket)
+	preLoginResult, sqlerr, err := c.sendMessage(ptyPreLogin, preLoginPacket)
 
 	if err != nil {
 		return nil, err
@@ -30,6 +30,10 @@ func (c *Conn) sendPreLogin() ([]byte, error) {
 
 	if len(*preLoginResult) > 1 {
 		return nil, errors.New("More than 1 result in the preLogin response")
+	}
+	
+	if len(*sqlerr) > 0 {
+		return nil, (*sqlerr)[0]
 	}
 
 	preLoginResultData := (*preLoginResult)[0] //[8:]
