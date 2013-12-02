@@ -197,6 +197,10 @@ func parseDSN(dsn string) (cfg *config, err error) {
 	if cfg.addr == "" {
 		cfg.addr = "127.0.0.1:1433"
 	}
+	
+	if cfg.maxPacketSize == 0 {
+		cfg.maxPacketSize = 0x1000
+	}
 
 	return
 }

@@ -128,7 +128,7 @@ func (c *Conn) makeLoginPacket() ([]byte, error) {
 	if c.cfg.appname != "" {
 		appname = c.cfg.appname
 	} else {
-		appname = os.Args[0] // Should be executable name, at least in *nix
+		appname = "go-tds" //os.Args[0] // Should be executable name, at least in *nix
 	}
 
 	var servername string
@@ -141,37 +141,21 @@ func (c *Conn) makeLoginPacket() ([]byte, error) {
 		//According to MS specs this should be: varData{strData: ensureBrackets(c.cfg.user)},
 		// But in reality they do:
 		varData{strData: c.cfg.user},
-		varData{data: encodePassword(c.cfg.password)}, //strData or data?
+		varData{data: encodePassword(c.cfg.password), halfLength: true}, //strData or data?
 		varData{strData: appname},
 		varData{strData: servername},
 		varData{}, // Extension block which we do not use at the moment
 		varData{strData: driverName},
 		varData{data: []byte(c.cfg.preferredLanguage)},
-		varData{strData: ensureBrackets(c.cfg.dbname)},
+		// Again, according to MS specs this should be: varData{strData: ensureBrackets(c.cfg.dbname)},
+		// But in reality they do:
+		varData{strData: c.cfg.dbname},
 		varData{data: clientID, raw: true},
 		varData{}, // SSPI data, we'll look at this later...
 		varData{strData: c.cfg.attachDB},
-		varData{data: []byte(c.cfg.newPass)},         //strData or data?
+		varData{data: []byte(c.cfg.newPass), halfLength: true},         //strData or data?
 		varData{data: []byte{0, 0, 0, 0}, raw: true}, //SSPI long length.
 	}
-	/*
-		varBlock := []varData{
-			varData{data: []byte(hostname)},
-			varData{data: []byte(ensureBrackets(c.cfg.user))},
-			varData{data: encodePassword(c.cfg.password)},
-			varData{data: []byte(appname)},
-			varData{data: []byte(servername)},
-			varData{}, // Extension block which we do not use at the moment
-			varData{data: []byte(driverName)},
-			varData{data: []byte(c.cfg.preferredLanguage)},
-			varData{data: []byte(ensureBrackets(c.cfg.dbname))},
-			varData{data: clientID, raw: true},
-			varData{}, // SSPI data, we'll look at this later...
-			varData{data: []byte(c.cfg.attachDB)},
-			varData{data: []byte(c.cfg.newPass)},
-			varData{data: []byte{0, 0, 0, 0}, raw: true}, //SSPI long length.
-		}
-	*/
 
 	b.Write(makeVariableDataPortion(varBlock, b.Len()))
 
@@ -193,6 +177,7 @@ type varData struct {
 	data    []byte // The data to include OR:
 	strData string // The string to include
 	raw     bool   // Whether to do it properly or to just smack the raw data in the header...
+	halfLength     bool   // Whether to divide the length in half when building the packet (for raw string data)
 }
 
 //...which we loop through a couple of times here
@@ -232,7 +217,11 @@ func makeVariableDataPortion(data []varData, startingOffset int) []byte {
 			}
 
 			binary.Write(buf, binary.LittleEndian, uint16(offset))
-			binary.Write(buf, binary.LittleEndian, uint16(dataLength))
+			if part.halfLength {
+				binary.Write(buf, binary.LittleEndian, uint16(dataLength / 2))
+			} else {
+				binary.Write(buf, binary.LittleEndian, uint16(dataLength))
+			}
 			if part.data == nil {
 				offset += dataLength * 2
 			} else {
@@ -273,6 +262,10 @@ func encodePassword(password string) []byte {
 // ensureBrackets ensures that a value is enclosed in square brackets like so: [value]
 // Later on this could be changed into a more full-fledged validator for object identifiers (for values such as [dbo].[value]
 func ensureBrackets(value string) string {
+	if len(value) == 0 {
+		return value
+	}
+	
 	if (value[0] == '[') && (value[len(value)-1] == ']') {
 		return value
 	}
