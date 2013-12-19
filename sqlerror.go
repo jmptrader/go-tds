@@ -20,6 +20,6 @@ type SQLError struct {
 }
 
 func (e SQLError) Error() string {
-	
+
 	return e.Text
 }

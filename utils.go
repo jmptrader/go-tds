@@ -5,9 +5,11 @@ import (
 	"log"
 	"os"
 	//"regexp"
+	"encoding/binary"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 var (
@@ -197,7 +199,7 @@ func parseDSN(dsn string) (cfg *config, err error) {
 	if cfg.addr == "" {
 		cfg.addr = "127.0.0.1:1433"
 	}
-	
+
 	if cfg.maxPacketSize == 0 {
 		cfg.maxPacketSize = 0x1000
 	}
@@ -245,4 +247,9 @@ func makeByteFromBits(b1 bool, b2 bool, b3 bool, b4 bool, b5 bool, b6 bool, b7 b
 		result |= 128
 	}
 	return
+}
+
+func writeUTF16String(w io.Writer, s string) error {
+	utfString := utf16.Encode([]rune(s))
+	return binary.Write(w, binary.LittleEndian, utfString)
 }

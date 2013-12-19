@@ -3,14 +3,17 @@ package gotds
 import (
 	"bytes"
 	_ "encoding/binary"
-	"github.com/grovespaz/go-tds/mockserver"
+	//"github.com/grovespaz/go-tds/mockserver"
 	"reflect"
 	"testing"
 
 	utf16c "github.com/grovespaz/go-tds/utf16"
 	utf16 "unicode/utf16"
+
+	"database/sql"
 )
 
+/*
 func TestMockPreLogin(t *testing.T) {
 	mockSrv := mockserver.MakeMockServer([][]byte{[]byte{4, 1, 0, 32, 0, 0, 1, 0, 0, 0, 16, 0, 6, 1, 0, 22, 0, 1, 4, 0, 23, 0, 1, 255, 10, 50, 9, 196}}, t)
 	config, _ := parseDSN("/")
@@ -23,21 +26,24 @@ func TestMockPreLogin(t *testing.T) {
 
 	c.Close()
 }
+*/
 
-/*
-func TestLivePreLogin(t *testing.T) {
-	return
-	config, _ := parseDSN("gotest:gotest@(slu.is:49286)/gotest")
-
-	c, err := MakeConnection(config)
+func TestLiveAll(t *testing.T) {
+	db, err := sql.Open("tds", "Data Source=slu.is:49286;Initial Catalog=gotest;uid=gotest;pwd=gotest")
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
 
-	c.Close()
+	// Open doesn't (always) open a connection. This does:
+	_, err = db.Query("select 1, 2, 3")
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	db.Close()
 }
-*/
 
 func TestTokenParsing(t *testing.T) {
 	// Blank stream:
@@ -152,8 +158,8 @@ func TestVariableLengthLogin(t *testing.T) {
 		varData{data: clientID, raw: true},
 		varData{}, // SSPI data, we'll look at this later...
 		varData{strData: "AttachDB"},
-		varData{data: []byte("newPass"), halfLength: true},             //strData or data?
-		varData{data: []byte{0, 0, 0, 0}, raw: true}, //SSPI long length.
+		varData{data: []byte("newPass"), halfLength: true}, //strData or data?
+		varData{data: []byte{0, 0, 0, 0}, raw: true},       //SSPI long length.
 	}
 
 	b := makeVariableDataPortion(varBlock, 36)
@@ -281,7 +287,7 @@ func TestPasswordDecode(t *testing.T) {
 func TestPasswordEncode(t *testing.T) {
 	original := "gotest"
 	expected := []byte{0xd3, 0xa5, 0x53, 0xa5, 0xe2, 0xa5, 0xf3, 0xa5, 0x92, 0xa5, 0xe2, 0xa5}
-	
+
 	encoded := encodePassword(original)
 	if !reflect.DeepEqual(encoded, expected) {
 		t.Fatalf("encoded and expected don't match, % x vs. % x", original, encoded)

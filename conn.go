@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	driverName           = "go-tds"
+	driverName = "go-tds"
 	//driverName           = "ODBC"
 	driverVersion uint32 = 0x000001
 	headerSize           = 8
@@ -54,6 +54,7 @@ const (
 )
 
 type packetType byte
+
 const (
 	ptySQLBatch    packetType = 1
 	ptyLegacyLogin packetType = 2
@@ -177,7 +178,7 @@ func MakeConnection(cfg *config) (*Conn, error) {
 // MakeConnectionWithSocket initiates a connection using the specified ReadWriteCloser as an underlying socket.
 // This allows for the TDS connections to take place over a protocol other than TCP, which the specs allow for.
 func MakeConnectionWithSocket(cfg *config, socket io.ReadWriteCloser) (*Conn, error) {
-	conn := &Conn{socket: socket, State: Initial, cfg: *cfg, tdsVersion: TDS71}
+	conn := &Conn{socket: socket, State: Initial, cfg: *cfg, tdsVersion: TDS73}
 
 	//This seems reasonable?:
 	conn.useDBWarnings = true
@@ -229,6 +230,7 @@ func MakeConnectionWithSocket(cfg *config, socket io.ReadWriteCloser) (*Conn, er
 		return nil, err
 	}
 
+	// For now we assume that, if no errors occured, we're good to go!
 	conn.SubState = Ready
 
 	conn.State = PostLogin
@@ -294,6 +296,11 @@ func (c *Conn) readMessage() (*[][]byte, *[]SQLError, error) {
 			return nil, nil, err
 		}
 
+		if c.cfg.verboseLog {
+			errLog.Printf("Read %v bytes.\n", bytesRead)
+			errLog.Printf("Result: % x\n", resultPacket[0:bytesRead])
+		}
+
 		if resultPacket[0] != byte(ptyTableResult) {
 			//Server always returns type 4 in packet header
 			err = errors.New("Incorrect data, was expecting 0x04.")
@@ -310,15 +317,16 @@ func (c *Conn) readMessage() (*[][]byte, *[]SQLError, error) {
 			return nil, nil, err
 		}
 
-		if c.cfg.verboseLog {
-			errLog.Printf("Read %v bytes.\n", bytesRead)
-			errLog.Printf("Result: % x\n", resultPacket[0:bytesRead])
-		}
-		
-		switch resultPacket[8]{
-		case 0xAA: //Error
-			
+		switch resultPacket[8] {
+		case 0xAA: //Error, TODO(gv): Do something with these...
+			if c.cfg.verboseLog {
+				errLog.Printf("Received error.\n")
+			}
+			SQLErrors = append(SQLErrors, SQLError{Text: "Placeholder-error"})
 		default:
+			if c.cfg.verboseLog {
+				errLog.Printf("Received non-error.\n")
+			}
 			responses = append(responses, resultPacket[8:bytesRead])
 		}
 	}

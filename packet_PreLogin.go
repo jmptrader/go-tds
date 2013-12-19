@@ -31,7 +31,7 @@ func (c *Conn) sendPreLogin() ([]byte, error) {
 	if len(*preLoginResult) > 1 {
 		return nil, errors.New("More than 1 result in the preLogin response")
 	}
-	
+
 	if len(*sqlerr) > 0 {
 		return nil, (*sqlerr)[0]
 	}

@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"io"
 	"os" // For hostname
-	utf16 "unicode/utf16"
 
 	utf16c "github.com/grovespaz/go-tds/utf16"
 )
@@ -27,7 +25,7 @@ func (c *Conn) login() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if len(*sqlerr) > 0 {
 		// For now:
 		return nil, (*sqlerr)[0]
@@ -153,8 +151,8 @@ func (c *Conn) makeLoginPacket() ([]byte, error) {
 		varData{data: clientID, raw: true},
 		varData{}, // SSPI data, we'll look at this later...
 		varData{strData: c.cfg.attachDB},
-		varData{data: []byte(c.cfg.newPass), halfLength: true},         //strData or data?
-		varData{data: []byte{0, 0, 0, 0}, raw: true}, //SSPI long length.
+		varData{data: []byte(c.cfg.newPass), halfLength: true}, //strData or data?
+		varData{data: []byte{0, 0, 0, 0}, raw: true},           //SSPI long length.
 	}
 
 	b.Write(makeVariableDataPortion(varBlock, b.Len()))
@@ -174,10 +172,10 @@ func (c *Conn) makeLoginPacket() ([]byte, error) {
 // For some reason I can't fathom, smack in the middle of the header lies a 6(!)-byte field for the ClientID, which completely breaks any sleek generic function one would want to write for this. At the end of the header is another field in case the SSPI-length was larger than uint16. This field is a uint32 and can be used as a replacement length.
 // Because of this, I introduce this struct:
 type varData struct {
-	data    []byte // The data to include OR:
-	strData string // The string to include
-	raw     bool   // Whether to do it properly or to just smack the raw data in the header...
-	halfLength     bool   // Whether to divide the length in half when building the packet (for raw string data)
+	data       []byte // The data to include OR:
+	strData    string // The string to include
+	raw        bool   // Whether to do it properly or to just smack the raw data in the header...
+	halfLength bool   // Whether to divide the length in half when building the packet (for raw string data)
 }
 
 //...which we loop through a couple of times here
@@ -218,7 +216,7 @@ func makeVariableDataPortion(data []varData, startingOffset int) []byte {
 
 			binary.Write(buf, binary.LittleEndian, uint16(offset))
 			if part.halfLength {
-				binary.Write(buf, binary.LittleEndian, uint16(dataLength / 2))
+				binary.Write(buf, binary.LittleEndian, uint16(dataLength/2))
 			} else {
 				binary.Write(buf, binary.LittleEndian, uint16(dataLength))
 			}
@@ -233,7 +231,7 @@ func makeVariableDataPortion(data []varData, startingOffset int) []byte {
 	for _, part := range data {
 		if !part.raw {
 			if part.data == nil {
-				WriteUTF16String(buf, part.strData)
+				writeUTF16String(buf, part.strData)
 			} else {
 				buf.Write(part.data)
 			}
@@ -242,11 +240,6 @@ func makeVariableDataPortion(data []varData, startingOffset int) []byte {
 
 	//return []byte{0x5E, 0x00, 0x08, 0x00, 0x6E, 0x00, 0x02, 0x00, 0x72, 0x00, 0x00, 0x00, 0x72, 0x00, 0x07, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x04, 0x00, 0x88, 0x00, 0x00, 0x00, 0x88, 0x00, 0x00, 0x00, 0x00, 0x50, 0x8B, 0xE2, 0xB7, 0x8F, 0x88, 0x00, 0x00, 0x00, 0x88, 0x00, 0x00, 0x00, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x73, 0x00, 0x6B, 0x00, 0x6F, 0x00, 0x73, 0x00, 0x74, 0x00, 0x6F, 0x00, 0x76, 0x00, 0x31, 0x00, 0x73, 0x00, 0x61, 0x00, 0x4F, 0x00, 0x53, 0x00, 0x51, 0x00, 0x4C, 0x00, 0x2D, 0x00, 0x33, 0x00, 0x32, 0x00, 0x4F, 0x00, 0x44, 0x00, 0x42, 0x00, 0x43, 0x00}
 	return buf.Bytes()
-}
-
-func WriteUTF16String(w io.Writer, s string) error {
-	bla := utf16.Encode([]rune(s))
-	return binary.Write(w, binary.LittleEndian, bla)
 }
 
 func encodePassword(password string) []byte {
@@ -265,7 +258,7 @@ func ensureBrackets(value string) string {
 	if len(value) == 0 {
 		return value
 	}
-	
+
 	if (value[0] == '[') && (value[len(value)-1] == ']') {
 		return value
 	}
