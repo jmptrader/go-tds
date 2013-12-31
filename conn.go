@@ -163,6 +163,8 @@ type config struct {
 
 	timezone int32  // TODO: Figure out format, best guess: minutes difference between UTC and local time. UTC = local time + timezone
 	lcid     uint32 //Microsoft Locale Identifier. 1033 (0x0409) == US English
+
+	placeholder rune // The placeholder in queries to be replaced with the actual value
 }
 
 // MakeConnection initiates a TCP connection with the specified configuration.
@@ -230,7 +232,7 @@ func MakeConnectionWithSocket(cfg *config, socket io.ReadWriteCloser) (*Conn, er
 		return nil, err
 	}
 
-	// For now we assume that, if no errors occured, we're good to go!
+	// For now we assume that, if no errors have occured, we're good to go!
 	conn.SubState = Ready
 
 	conn.State = PostLogin
@@ -322,7 +324,8 @@ func (c *Conn) readMessage() (*[][]byte, *[]SQLError, error) {
 			if c.cfg.verboseLog {
 				errLog.Printf("Received error.\n")
 			}
-			SQLErrors = append(SQLErrors, SQLError{Text: "Placeholder-error"})
+			sqlerr := c.makeError(resultPacket[8:bytesRead])
+			SQLErrors = append(SQLErrors, sqlerr)
 		default:
 			if c.cfg.verboseLog {
 				errLog.Printf("Received non-error.\n")

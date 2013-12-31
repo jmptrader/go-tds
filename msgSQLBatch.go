@@ -5,14 +5,42 @@ import (
 	"database/sql/driver"
 )
 
+// Stmt is a shim at the moment until I implement proper parameter handling
+type Stmt struct {
+	c         *Conn
+	statement string
+}
+
+func (s Stmt) Close() error {
+	// Nothing to do
+	return nil
+}
+
+func (s Stmt) NumInput() int {
+	//At the moment I don't support placeholders/parameters
+	return -1
+}
+
+func (s Stmt) Exec(args []driver.Value) (driver.Result, error) {
+	return s.c.Exec(s.statement, args)
+}
+
+func (s Stmt) Query(args []driver.Value) (driver.Rows, error) {
+	return s.c.Query(s.statement, args)
+}
+
+func (c *Conn) Prepare(query string) (driver.Stmt, error) {
+	return Stmt{statement: query}, nil
+}
+
 func (c *Conn) Exec(query string, args []driver.Value) (driver.Result, error) {
+	if c.cfg.verboseLog {
+		errLog.Printf("Executing query: %v", query)
+	}
+
 	queryPacket, err := c.makeSQLBatchPacket(query, args)
 	if err != nil {
 		return nil, err
-	}
-
-	if c.cfg.verboseLog {
-		errLog.Printf("Trying to login with username: %v, password: %v and default DB: %v", c.cfg.user, c.cfg.password, c.cfg.dbname)
 	}
 
 	queryResultData, sqlerr, err := c.sendMessage(ptySQLBatch, queryPacket)
@@ -70,21 +98,16 @@ func (c *Conn) makeSQLBatchPacket(query string, args []driver.Value) ([]byte, er
 	b.Grow(0) // TODO(gv): Fill in the least needed amount here
 
 	// TODO(gv): Support proper transactions here
-	transactionHeader := []byte{0, 0, 0, 0, 0, 0, 0, 1}
-	outstandingRequests := 0
+	transactionHeader := []byte{0, 0, 0, 0, 0, 0, 0, 0}
+	outstandingRequests := 1
 
 	writeCommonHeader(b, transactionHeader, outstandingRequests)
 
-	escapedQuery, err := escapeParameters(query, args)
+	escapedQuery, err := escapeParameters(query, args, c.cfg.placeholder)
 	if err != nil {
 		return nil, err
 	}
 	writeUTF16String(b, escapedQuery)
 
 	return b.Bytes(), nil
-}
-
-func escapeParameters(query string, args []driver.Value) (string, error) {
-	//OOPS! We ignore parameters for now!
-	return query, nil
 }

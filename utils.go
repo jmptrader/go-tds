@@ -1,11 +1,14 @@
 package gotds
 
 import (
+	"errors"
 	"io"
 	"log"
 	"os"
 	//"regexp"
+	"bytes"
 	"encoding/binary"
+	utf16c "github.com/grovespaz/go-tds/utf16"
 	"strconv"
 	"strings"
 	"time"
@@ -26,14 +29,6 @@ func init() {
 	multiLog := io.MultiWriter(os.Stderr, logFile)
 
 	errLog = log.New(multiLog, "[go-tds] ", log.Ldate|log.Ltime|log.Lshortfile)
-
-	/*
-		dsnPattern = regexp.MustCompile(
-			`^(?:(?P<user>.*?)(?::(?P<passwd>.*))?@)?` + // [user[:password]@]
-				`(?:(?P<net>[^\(]*)(?:\((?P<addr>[^\)]*)\))?)?` + // [net[(addr)]]
-				`\/(?P<dbname>.*?)` + // /dbname
-				`(?:\?(?P<params>[^\?]*))?$`) // [?param1=value1&paramN=valueN]
-	*/
 }
 
 func parseDSN(dsn string) (cfg *config, err error) {
@@ -76,7 +71,6 @@ func parseDSN(dsn string) (cfg *config, err error) {
 			fallthrough
 		case "addr":
 			cfg.addr = value
-
 		case "initial catalog":
 			fallthrough
 		case "database":
@@ -144,51 +138,15 @@ func parseDSN(dsn string) (cfg *config, err error) {
 			if isBool {
 				cfg.trustServerCertificate = boolValue
 			}
+		case "placeholder":
+			if len(value) != 1 {
+				return nil, errors.New("Invalid placeholder char")
+			}
+			cfg.placeholder = []rune(value)[0]
 		default:
 			cfg.params[s[0]] = value
 		}
 	}
-
-	/*
-		for i, match := range matches {
-			switch names[i] {
-			case "user":
-				cfg.user = match
-			case "passwd":
-				cfg.password = match
-			case "net":
-				cfg.net = match
-			case "addr":
-				cfg.addr = match
-			case "dbname":
-				cfg.dbname = match
-			case "params":
-				for _, v := range strings.Split(match, "&") {
-					param := strings.SplitN(v, "=", 2)
-					if len(param) != 2 {
-						continue
-					}
-
-					// cfg params
-					switch value := param[1]; param[0] {
-					// Dial Timeout
-					case "timeout":
-						cfg.timeout, err = time.ParseDuration(value)
-						if err != nil {
-							return
-						}
-					case "verbose":
-						boolValue, isBool := readBool(value)
-						if isBool {
-							cfg.verboseLog = boolValue
-						}
-					default:
-						cfg.params[param[0]] = value
-					}
-				}
-			}
-		}
-	*/
 
 	// Set default network if empty
 	if cfg.net == "" {
@@ -202,6 +160,10 @@ func parseDSN(dsn string) (cfg *config, err error) {
 
 	if cfg.maxPacketSize == 0 {
 		cfg.maxPacketSize = 0x1000
+	}
+
+	if cfg.placeholder == 0 {
+		cfg.placeholder = '?'
 	}
 
 	return
@@ -252,4 +214,34 @@ func makeByteFromBits(b1 bool, b2 bool, b3 bool, b4 bool, b5 bool, b6 bool, b7 b
 func writeUTF16String(w io.Writer, s string) error {
 	utfString := utf16.Encode([]rune(s))
 	return binary.Write(w, binary.LittleEndian, utfString)
+}
+
+func readUS_VarChar(buf *bytes.Buffer) string {
+	var txtLength uint16
+	err := binary.Read(buf, binary.LittleEndian, &txtLength)
+	if err != nil {
+		panic(err)
+	}
+
+	if txtLength > 0 {
+		rawMsg := buf.Next(int(txtLength) * 2)
+		return utf16c.Decode(rawMsg)
+	} else {
+		return ""
+	}
+}
+
+func readB_VarChar(buf *bytes.Buffer) string {
+	txtLength, err := buf.ReadByte()
+
+	if err != nil {
+		panic(err)
+	}
+
+	if txtLength > 0 {
+		rawMsg := buf.Next(int(txtLength) * 2)
+		return utf16c.Decode(rawMsg)
+	} else {
+		return ""
+	}
 }
