@@ -63,7 +63,11 @@ func (c *Conn) parseResult(raw []byte) (Rows, error) {
 		panic("Got noMetaData in COLMETADATA, should not happen")
 	}
 	buf := bytes.NewBuffer(raw)
-	for {
+	fieldcount, err := buf.ReadByte()
+	if err != nil {
+		return nil
+	}
+	for i := byte(0); i < fieldcount; i++ {
 		// UserType (we ignore this for now)
 		// Will always be 0x0000 except for TIMESTAMP (0x0050) and alias types (greater than 0x00FF).
 		if c.tdsVersion >= TDS72 {
@@ -78,8 +82,15 @@ func (c *Conn) parseResult(raw []byte) (Rows, error) {
 		_ = buf.Next(2)
 
 		// Type info:
+		info, err := parseColumnType(buf)
+		if err != nil {
+			return nil, err
+		}
 
 		// If  text, ntext and image, table name:
+		if false {
+			tablename := readB_VarChar(buf)
+		}
 
 		// Column name
 		columnName := readB_VarChar(buf)
