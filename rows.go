@@ -5,6 +5,11 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io"
+  "errors"
+)
+
+var (
+  ErrInvalidData = errors.New("Invalid data found")
 )
 
 type columnType byte
@@ -53,8 +58,25 @@ func (r Rows) Close() error {
 }
 
 func (r Rows) Next(dest []driver.Value) error {
-
-	return io.EOF
+  if r.buf.len() == 0 {
+   return io.EOF 
+  }
+  for i, m := range r.columnTypes {
+    var v interface{}
+    switch m {
+    case INT4TYPE:
+      d := make([]byte, 4, 0)
+      n, err := r.buf.Read(d)
+      if n != 4 {
+       return ErrInvalidData
+      }
+      v = 
+    default:
+      return ErrInvalidData
+      
+    }
+    dest[i] = v
+  }
 }
 
 func (c *Conn) parseResult(raw []byte) (Rows, error) {
@@ -65,8 +87,9 @@ func (c *Conn) parseResult(raw []byte) (Rows, error) {
 	buf := bytes.NewBuffer(raw)
 	fieldcount, err := buf.ReadByte()
 	if err != nil {
-		return nil
+		return rows, err
 	}
+  buf.ReadByte()
 	for i := byte(0); i < fieldcount; i++ {
 		// UserType (we ignore this for now)
 		// Will always be 0x0000 except for TIMESTAMP (0x0050) and alias types (greater than 0x00FF).
@@ -84,26 +107,35 @@ func (c *Conn) parseResult(raw []byte) (Rows, error) {
 		// Type info:
 		info, err := parseColumnType(buf)
 		if err != nil {
-			return nil, err
+			return rows, err
 		}
 
 		// If  text, ntext and image, table name:
 		if false {
-			tablename := readB_VarChar(buf)
+          //Commented because not yet used:
+			//tablename := readB_VarChar(buf)
 		}
 
 		// Column name
 		columnName := readB_VarChar(buf)
-
+		
+      	rows.columnNames = append(rows.columnNames, columnName)
+      	rows.columnTypes = append(rows.columnTypes, info)
 	}
 	return rows, nil
 }
 
-func parseColumnType(buf io.Reader) (columnInfo, error) {
+func parseColumnType(buf *bytes.Buffer) (columnInfo, error) {
 	var result columnInfo
+    // Loose byte?
+  //fmt.Printf("% X \n", buf.Bytes())
+  	//_, _ = buf.ReadByte()
+ // _, _ = buf.ReadByte()
+   fmt.Printf("% X \n", buf.Bytes())
 	b, err := buf.ReadByte()
+   fmt.Printf("% X \n", buf.Bytes())
 	if err != nil {
-		return err
+		return result, err
 	}
 	ctype := columnType(b)
 	result.columnType = ctype
@@ -133,6 +165,7 @@ func parseColumnType(buf io.Reader) (columnInfo, error) {
 	case INT8TYPE:
 		// Nothing to do for these, length is contained within type
 	default:
-		panic(fmt.Sprintf("unknown column type: %v", b))
+		panic(fmt.Sprintf("unknown column type: %x", b))
 	}
+  return result, nil
 }

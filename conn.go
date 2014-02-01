@@ -3,7 +3,6 @@ package gotds
 import (
 	"database/sql/driver"
 	"errors"
-	//"github.com/grovespaz/go-tds/safeconn"
 	"bytes"
 	"encoding/binary"
 	"fmt"

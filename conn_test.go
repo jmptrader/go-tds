@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	utf16c "github.com/grovespaz/go-tds/utf16"
+	utf16c "github.com/Grovespaz/go-tds/utf16"
 	utf16 "unicode/utf16"
 
 	"database/sql"

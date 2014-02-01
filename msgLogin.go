@@ -6,7 +6,7 @@ import (
 	"errors"
 	"os" // For hostname
 
-	utf16c "github.com/grovespaz/go-tds/utf16"
+	utf16c "github.com/Grovespaz/go-tds/utf16"
 )
 
 func (c *Conn) login() ([]byte, error) {

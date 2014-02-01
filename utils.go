@@ -8,7 +8,7 @@ import (
 	//"regexp"
 	"bytes"
 	"encoding/binary"
-	utf16c "github.com/grovespaz/go-tds/utf16"
+	utf16c "github.com/Grovespaz/go-tds/utf16"
 	"strconv"
 	"strings"
 	"time"
