@@ -3,6 +3,7 @@ package gotds
 import (
 	"fmt"
 	"testing"
+	"database/sql/driver"
 )
 
 func TestParseSimpleSelectResult(t *testing.T) {
@@ -13,5 +14,11 @@ func TestParseSimpleSelectResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v", result)
+
+	values := make([]driver.Value, 0)
+	err = result.Next(values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%+v", values)
 }

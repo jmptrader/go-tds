@@ -46,7 +46,7 @@ const (
 type Rows struct {
 	columnNames []string
 	columnTypes []columnInfo
-	buf         bytes.Buffer
+	buf         *bytes.Buffer
 }
 
 func (r Rows) Columns() []string {
@@ -126,6 +126,7 @@ func (c *Conn) parseResult(raw []byte) (Rows, error) {
 		rows.columnNames = append(rows.columnNames, columnName)
 		rows.columnTypes = append(rows.columnTypes, info)
 	}
+	rows.buf = buf
 	return rows, nil
 }
 
