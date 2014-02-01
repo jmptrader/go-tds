@@ -3,13 +3,13 @@ package gotds
 import (
 	"bytes"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
-  "errors"
 )
 
 var (
-  ErrInvalidData = errors.New("Invalid data found")
+	ErrInvalidData = errors.New("Invalid data found")
 )
 
 type columnType byte
@@ -46,7 +46,7 @@ const (
 type Rows struct {
 	columnNames []string
 	columnTypes []columnInfo
-	buf         io.Reader
+	buf         bytes.Buffer
 }
 
 func (r Rows) Columns() []string {
@@ -58,25 +58,29 @@ func (r Rows) Close() error {
 }
 
 func (r Rows) Next(dest []driver.Value) error {
-  if r.buf.len() == 0 {
-   return io.EOF 
-  }
-  for i, m := range r.columnTypes {
-    var v interface{}
-    switch m {
-    case INT4TYPE:
-      d := make([]byte, 4, 0)
-      n, err := r.buf.Read(d)
-      if n != 4 {
-       return ErrInvalidData
-      }
-      v = 
-    default:
-      return ErrInvalidData
-      
-    }
-    dest[i] = v
-  }
+	if r.buf.Len() == 0 {
+		return io.EOF
+	}
+	for i, m := range r.columnTypes {
+		var v interface{}
+		switch m.columnType {
+		case INT4TYPE:
+			d := make([]byte, 0, 4)
+			n, err := r.buf.Read(d)
+			if err != nil {
+				return nil
+			}
+			if n != 4 {
+				return ErrInvalidData
+			}
+			v = int64(d[0]) & int64(d[1]<<8) & int64(d[2]<<16) & int64(d[3]<<24)
+		default:
+			return ErrInvalidData
+
+		}
+		dest[i] = v
+	}
+	return nil
 }
 
 func (c *Conn) parseResult(raw []byte) (Rows, error) {
@@ -89,7 +93,7 @@ func (c *Conn) parseResult(raw []byte) (Rows, error) {
 	if err != nil {
 		return rows, err
 	}
-  buf.ReadByte()
+	buf.ReadByte()
 	for i := byte(0); i < fieldcount; i++ {
 		// UserType (we ignore this for now)
 		// Will always be 0x0000 except for TIMESTAMP (0x0050) and alias types (greater than 0x00FF).
@@ -112,28 +116,28 @@ func (c *Conn) parseResult(raw []byte) (Rows, error) {
 
 		// If  text, ntext and image, table name:
 		if false {
-          //Commented because not yet used:
+			//Commented because not yet used:
 			//tablename := readB_VarChar(buf)
 		}
 
 		// Column name
 		columnName := readB_VarChar(buf)
-		
-      	rows.columnNames = append(rows.columnNames, columnName)
-      	rows.columnTypes = append(rows.columnTypes, info)
+
+		rows.columnNames = append(rows.columnNames, columnName)
+		rows.columnTypes = append(rows.columnTypes, info)
 	}
 	return rows, nil
 }
 
 func parseColumnType(buf *bytes.Buffer) (columnInfo, error) {
 	var result columnInfo
-    // Loose byte?
-  //fmt.Printf("% X \n", buf.Bytes())
-  	//_, _ = buf.ReadByte()
- // _, _ = buf.ReadByte()
-   fmt.Printf("% X \n", buf.Bytes())
+	// Loose byte?
+	//fmt.Printf("% X \n", buf.Bytes())
+	//_, _ = buf.ReadByte()
+	// _, _ = buf.ReadByte()
+	fmt.Printf("% X \n", buf.Bytes())
 	b, err := buf.ReadByte()
-   fmt.Printf("% X \n", buf.Bytes())
+	fmt.Printf("% X \n", buf.Bytes())
 	if err != nil {
 		return result, err
 	}
@@ -167,5 +171,5 @@ func parseColumnType(buf *bytes.Buffer) (columnInfo, error) {
 	default:
 		panic(fmt.Sprintf("unknown column type: %x", b))
 	}
-  return result, nil
+	return result, nil
 }

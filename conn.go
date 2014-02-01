@@ -1,10 +1,10 @@
 package gotds
 
 import (
-	"database/sql/driver"
-	"errors"
 	"bytes"
+	"database/sql/driver"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
