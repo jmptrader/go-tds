@@ -217,6 +217,7 @@ func writeUTF16String(w io.Writer, s string) error {
 }
 
 func readUS_VarChar(buf *bytes.Buffer) string {
+	// Should be null-aware here
 	var txtLength uint16
 	err := binary.Read(buf, binary.LittleEndian, &txtLength)
 	if err != nil {

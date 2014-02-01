@@ -38,6 +38,16 @@ const (
 	FLT8TYPE     columnType = 0x3E // Float
 	INT8TYPE     columnType = 0x7F // BigInt
 
+	//Variable length:
+	//4 or 8-byte:
+
+	//Variable USHORT (uint16)-length bytes:
+	BIGVARBINTYPE columnType = 0xA5
+	BIGVARCHRTYPE columnType = 0xA7
+	BIGBINARYTYPE columnType = 0xAD
+	BIGCHARTYPE   columnType = 0xAF
+	NVARCHARTYPE  columnType = 0xE7
+	NCHARTYPE     columnType = 0xEF
 )
 
 // Unused at the moment:
@@ -54,27 +64,53 @@ func (r Rows) Columns() []string {
 }
 
 func (r Rows) Close() error {
+	r.buf.Reset()
 	return nil
 }
 
 func (r Rows) Next(dest []driver.Value) error {
+	fmt.Println("NEXT!")
 	if r.buf.Len() == 0 {
+		errLog.Printf("Nothing left in buffer\n")
 		return io.EOF
+	}
+	if b, err := r.buf.ReadByte(); (err != nil) || (tokenDefinition(b) != row) {
+		errLog.Printf("Not a valid token definition at this point: %v \n", b)
+		errLog.Printf("%v \n", err)
+		return io.EOF
+	}
+	if len(r.columnTypes) != len(dest) {
+		panic("Invalid slice-length received")
 	}
 	for i, m := range r.columnTypes {
 		var v interface{}
 		switch m.columnType {
 		case INT4TYPE:
-			d := make([]byte, 0, 4)
+			d := make([]byte, 4, 4)
 			n, err := r.buf.Read(d)
 			if err != nil {
 				return nil
 			}
 			if n != 4 {
+				fmt.Printf("Got %v instead of 4\n", n)
 				return ErrInvalidData
 			}
-			v = int64(d[0]) & int64(d[1]<<8) & int64(d[2]<<16) & int64(d[3]<<24)
+			v = int64(d[0]) | int64(d[1]<<8) | int64(d[2]<<16) | int64(d[3]<<24)
+		case NVARCHARTYPE:
+			// Should be nul-aware here:
+			readB_VarChar(r.buf)
+		case NCHARTYPE, BIGCHARTYPE, BIGBINARYTYPE, BIGVARCHRTYPE, BIGVARBINTYPE:
+			// Length is encoded as USHORT:
+			var length uint16
+			rawLength := r.buf.Next(2)
+			length = uint16(rawLength[0]) | uint16(rawLength[1]<<8)
+			_ = length
+			switch m.columnType {
+			default:
+				panic("Haven't implemented these yet, sorry")
+			}
 		default:
+			errLog.Printf("Invalid or iunimplemented token: %v \n", m.columnType)
 			return ErrInvalidData
 
 		}
@@ -85,10 +121,10 @@ func (r Rows) Next(dest []driver.Value) error {
 
 func (c *Conn) parseResult(raw []byte) (Rows, error) {
 	var rows Rows
-	if raw[1] == 0xff && raw[2] == 0xff {
+	if tokenDefinition(raw[0]) != colMetaData {
 		panic("Got noMetaData in COLMETADATA, should not happen")
 	}
-	buf := bytes.NewBuffer(raw)
+	buf := bytes.NewBuffer(raw[1:])
 	fieldcount, err := buf.ReadByte()
 	if err != nil {
 		return rows, err
@@ -132,43 +168,25 @@ func (c *Conn) parseResult(raw []byte) (Rows, error) {
 
 func parseColumnType(buf *bytes.Buffer) (columnInfo, error) {
 	var result columnInfo
-	// Loose byte?
-	//fmt.Printf("% X \n", buf.Bytes())
-	//_, _ = buf.ReadByte()
-	// _, _ = buf.ReadByte()
-	fmt.Printf("% X \n", buf.Bytes())
 	b, err := buf.ReadByte()
-	fmt.Printf("% X \n", buf.Bytes())
+	//fmt.Printf("% X \n", buf.Bytes())
 	if err != nil {
 		return result, err
 	}
 	ctype := columnType(b)
 	result.columnType = ctype
-	switch ctype {
-	case NULLTYPE:
-		fallthrough
-	case INT1TYPE:
-		fallthrough
-	case BITTYPE:
-		fallthrough
-	case INT2TYPE:
-		fallthrough
-	case INT4TYPE:
-		fallthrough
-	case DATETIM4TYPE:
-		fallthrough
-	case FLT4TYPE:
-		fallthrough
-	case MONEY4TYPE:
-		fallthrough
-	case MONEYTYPE:
-		fallthrough
-	case DATETIMETYPE:
-		fallthrough
-	case FLT8TYPE:
-		fallthrough
-	case INT8TYPE:
-		// Nothing to do for these, length is contained within type
+	// So what follows might be the most useless switch statement in the world. Even the default clause is useless as it will never get executed, unless I really did something wrong.
+	switch ctype & 0x30 {
+	case 0x16:
+		//Zero-length token, nothing to do
+	case 0x30:
+		//Above is the same as:
+		//case NULLTYPE, INT1TYPE, BITTYPE, INT2TYPE, INT4TYPE, DATETIM4TYPE, FLT4TYPE, MONEY4TYPE, MONEYTYPE, DATETIMETYPE, FLT8TYPE, INT8TYPE:
+	// Nothing to do for these, length is contained within type
+	case 0x20:
+		// Variable-length token, length is contained in value
+	case 0x0:
+		// Variable count token,
 	default:
 		panic(fmt.Sprintf("unknown column type: %x", b))
 	}

@@ -1,9 +1,9 @@
 package gotds
 
 import (
-	"fmt"
-	"testing"
 	"database/sql/driver"
+	//"fmt"
+	"testing"
 )
 
 func TestParseSimpleSelectResult(t *testing.T) {
@@ -15,10 +15,13 @@ func TestParseSimpleSelectResult(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	values := make([]driver.Value, 0)
+	values := make([]driver.Value, 3)
 	err = result.Next(values)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v", values)
+	//fmt.Printf("%+v", values)
+	if (values[0].(int64) != 1) || (values[1].(int64) != 2) || (values[2].(int64) != 3) {
+		t.Fatal("Did not receive expected values [1 2 3], got: ", values)
+	}
 }

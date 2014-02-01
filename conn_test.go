@@ -36,10 +36,45 @@ func TestLiveAll(t *testing.T) {
 	}
 
 	// Open doesn't (always) open a connection. This does:
-	_, err = db.Query("select 1, 2, 3")
+	rows, err := db.Query("select 1, 2, 3")
 	if err != nil {
 		t.Fatal(err)
 		return
+	}
+
+	if rows.Next() {
+		var i1, i2, i3 int
+		err := rows.Scan(&i1, &i2, &i3)
+		if err != nil {
+			t.Fatal(err)
+			return
+		}
+		if (i1 != 1) || (i2 != 2) || (i3 != 3) {
+			t.Fatal("Did not get expected values back")
+			return
+		}
+	}
+
+	if rows.Next() {
+		t.Fatal("Received more than one row back")
+	}
+
+	rows, err = db.Query("SELECT N'Hello world!', N'From go-tds'")
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	if rows.Next() {
+		var str1, str2 string
+		err := rows.Scan(&str1, &str2)
+		if err != nil {
+			t.Fatal(err)
+			return
+		}
+		if (str1 != "Hello world!") || (str2 != "From go-tds") {
+			t.Fatal("Did not receive expected string-values back")
+		}
 	}
 
 	db.Close()
