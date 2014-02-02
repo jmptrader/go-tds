@@ -69,7 +69,6 @@ func (r Rows) Close() error {
 }
 
 func (r Rows) Next(dest []driver.Value) error {
-	fmt.Println("NEXT!")
 	if r.buf.Len() == 0 {
 		errLog.Printf("Nothing left in buffer\n")
 		return io.EOF

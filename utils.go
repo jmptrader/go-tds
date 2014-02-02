@@ -34,7 +34,7 @@ func init() {
 func parseDSN(dsn string) (cfg *config, err error) {
 	cfg = new(config)
 	cfg.params = make(map[string]string)
-	cfg.verboseLog = true
+	//cfg.verboseLog = true
 
 	dsn = strings.ToLower(dsn)
 
